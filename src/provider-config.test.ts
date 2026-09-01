@@ -26,4 +26,8 @@ test("keeps the legacy management commands available for the Secret Storage key"
     /Test Inference/,
   );
   assert.ok(manifest.contributes.commands.some((item) => item.command === "crofCopilot.manage"));
+  assert.match(
+    manifest.contributes.commands.find((item) => item.command === "crofCopilot.showUsage")?.title ?? "",
+    /Credits and Usage/,
+  );
 });

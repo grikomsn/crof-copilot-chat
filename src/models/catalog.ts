@@ -1,9 +1,31 @@
 import { crofModelCost, modelCostFromApi, type ModelCost } from "./pricing";
+import type { ModelsDevModelMetadata } from "./metadata";
 
 export const FALLBACK_MODELS = ["deepseek-v3.2", "kimi-k2.7-code", "glm-5.2", "qwen3.8-27b"] as const;
 
 export const DEFAULT_MAX_INPUT_TOKENS = 262_144;
 export const DEFAULT_MAX_OUTPUT_TOKENS = 131_072;
+
+const OFFICIAL_REASONING_EFFORT_MODELS = new Set([
+  "deepseek-v4-pro-0813",
+  "deepseek-v4-pro",
+  "deepseek-v4-flash-0731",
+  "deepseek-v4-flash",
+  "kimi-k3",
+  "kimi-k3-eco",
+  "kimi-k2.7-code",
+  "kimi-k2.6",
+  "glm-5.3",
+  "glm-5.3-flash",
+  "glm-5.2",
+  "glm-5.1",
+  "mimo-v2.5-pro",
+  "gemma-4-31b-it",
+  "qwen3.8-27b",
+  "qwen3.6-27b",
+  "qwen3.5-397b-a17b",
+  "qwen3.5-9b",
+]);
 
 export interface CrofAIModelMetadata {
   readonly id: string;
@@ -12,6 +34,10 @@ export interface CrofAIModelMetadata {
   readonly contextLength: number;
   readonly maxOutputTokens: number;
   readonly imageInput: boolean;
+  readonly toolCalling: boolean;
+  readonly reasoningEffort: boolean;
+  readonly description?: string;
+  readonly releaseDate?: string;
   readonly cost?: ModelCost;
 }
 
@@ -27,6 +53,12 @@ export interface CrofAIApiModel {
   readonly input_modalities?: unknown;
   readonly architecture?: unknown;
   readonly pricing?: unknown;
+  readonly tool_calling?: unknown;
+  readonly tool_call?: unknown;
+  readonly reasoning_effort?: unknown;
+  readonly custom_reasoning?: unknown;
+  readonly description?: unknown;
+  readonly created?: unknown;
 }
 
 export const FALLBACK_MODEL_METADATA: readonly CrofAIModelMetadata[] = [
@@ -41,24 +73,22 @@ const FALLBACK_METADATA_BY_ID = new Map(FALLBACK_MODEL_METADATA.map((metadata) =
 
 export function isCrofAIChatModel(id: string): boolean {
   const value = id.trim().toLowerCase();
-  return Boolean(value)
-    && !/(?:^|[-/])(point|embed(?:ding)?s?|image|video|audio|voice|rerank)(?:[-/.]|$)/.test(value);
+  return Boolean(value) && !/(?:^|[-/])(point|embed(?:ding)?s?|image|video|audio|voice|rerank)(?:[-/.]|$)/.test(value);
 }
 
 export function orderModels(ids: readonly string[]): string[] {
-  return [...new Set(ids.map(canonicalModelId))]
-    .filter(isCrofAIChatModel)
-    .sort((left, right) => {
-      const leftRank = PREFERRED_ORDER.get(left) ?? Number.MAX_SAFE_INTEGER;
-      const rightRank = PREFERRED_ORDER.get(right) ?? Number.MAX_SAFE_INTEGER;
-      return leftRank - rightRank || left.localeCompare(right);
-    });
+  return [...new Set(ids.map(canonicalModelId))].filter(isCrofAIChatModel).sort((left, right) => {
+    const leftRank = PREFERRED_ORDER.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightRank = PREFERRED_ORDER.get(right) ?? Number.MAX_SAFE_INTEGER;
+    return leftRank - rightRank || left.localeCompare(right);
+  });
 }
 
 export function getModelMetadata(id: string): CrofAIModelMetadata {
   const canonical = canonicalModelId(id);
-  return FALLBACK_METADATA_BY_ID.get(canonical)
-    ?? model(canonical, DEFAULT_MAX_INPUT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS);
+  return (
+    FALLBACK_METADATA_BY_ID.get(canonical) ?? model(canonical, DEFAULT_MAX_INPUT_TOKENS, DEFAULT_MAX_OUTPUT_TOKENS)
+  );
 }
 
 export function resolveMaxOutputTokens(configured: number, advertised: number): number {
@@ -78,6 +108,23 @@ export function orderModelMetadata(models: readonly CrofAIApiModel[]): CrofAIMod
   });
 }
 
+export function enrichModelMetadata(
+  model: CrofAIModelMetadata,
+  metadata: ModelsDevModelMetadata | undefined,
+): CrofAIModelMetadata {
+  if (!metadata) return model;
+  return {
+    ...model,
+    contextLength: model.contextLength || metadata.contextLength || DEFAULT_MAX_INPUT_TOKENS,
+    maxOutputTokens: model.maxOutputTokens || metadata.maxOutputTokens || DEFAULT_MAX_OUTPUT_TOKENS,
+    imageInput: model.imageInput || metadata.imageInput === true,
+    toolCalling: metadata.toolCalling ?? model.toolCalling,
+    reasoningEffort: metadata.reasoningOptions?.includes("low") === true || model.reasoningEffort,
+    description: model.description ?? metadata.description,
+    releaseDate: model.releaseDate ?? metadata.releaseDate,
+  };
+}
+
 export function formatTokenLimit(tokens: number): string {
   if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`;
   if (tokens >= 1024) return `${Math.round(tokens / 1024)}K`;
@@ -85,10 +132,13 @@ export function formatTokenLimit(tokens: number): string {
 }
 
 export function formatModelName(id: string): string {
-  return id.split("-").map((part) => {
-    if (/^(ai|glm|kimi|mimo|qwen|vl|v\d+(?:\.\d+)?)$/i.test(part)) return part.toUpperCase();
-    return part.charAt(0).toUpperCase() + part.slice(1);
-  }).join(" ");
+  return id
+    .split("-")
+    .map((part) => {
+      if (/^(ai|glm|kimi|mimo|qwen|vl|v\d+(?:\.\d+)?)$/i.test(part)) return part.toUpperCase();
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
 }
 
 function modelMetadataFromApi(raw: CrofAIApiModel): CrofAIModelMetadata | undefined {
@@ -102,12 +152,14 @@ function modelMetadataFromApi(raw: CrofAIApiModel): CrofAIModelMetadata | undefi
     id,
     name: rawName.trim() ? rawName.replace(/^CrofAI:\s*/i, "").trim() : fallback.name,
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
-    contextLength: positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len)
-      ?? fallback.contextLength,
-    maxOutputTokens: positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens)
-      ?? fallback.maxOutputTokens,
-    imageInput: modalities?.some((value) => value.toLowerCase() === "image")
-      ?? /(?:vision|\bvl\b)/i.test(rawName),
+    contextLength:
+      positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
+    maxOutputTokens: positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens) ?? fallback.maxOutputTokens,
+    imageInput: modalities?.some((value) => value.toLowerCase() === "image") ?? /(?:vision|\bvl\b)/i.test(rawName),
+    toolCalling: boolean(raw.tool_calling ?? raw.tool_call) ?? fallback.toolCalling,
+    reasoningEffort: boolean(raw.reasoning_effort ?? raw.custom_reasoning) ?? fallback.reasoningEffort,
+    ...(typeof raw.description === "string" && raw.description.trim() ? { description: raw.description.trim() } : {}),
+    ...(unixDate(raw.created) ? { releaseDate: unixDate(raw.created) } : {}),
     cost: crofModelCost(id, modelCostFromApi(raw.pricing)),
   };
 }
@@ -120,6 +172,8 @@ function model(id: string, contextLength: number, maxOutputTokens: number): Crof
     contextLength,
     maxOutputTokens,
     imageInput: false,
+    toolCalling: true,
+    reasoningEffort: OFFICIAL_REASONING_EFFORT_MODELS.has(id),
     cost: crofModelCost(id),
   };
 }
@@ -134,10 +188,19 @@ function positiveInteger(value: unknown): number | undefined {
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined;
 }
 
 function stringArray(value: unknown): string[] | undefined {
   return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+}
+
+function boolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+function unixDate(value: unknown): string | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? new Date(value * 1_000).toISOString().slice(0, 10)
+    : undefined;
 }

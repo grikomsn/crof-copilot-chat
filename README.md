@@ -20,9 +20,10 @@ This extension is a native VS Code `LanguageModelChatProvider`. It validates a u
 - API keys managed by VS Code Secret Storage or provider configuration
 - Multiple isolated CrofAI API-key entries in Manage Language Models
 - Current input, cached-input, and output pricing in the model picker
+- Refreshable CrofAI credit balance, daily request allowance, and locally tracked token activity
 - Live `/models` discovery with context and output limits from CrofAI metadata
 - Streaming text, `reasoning_content`, token usage, and function-tool calls
-- CrofAI reasoning effort controls: `none`, `low`, `medium`, and `high`
+- CrofAI reasoning effort controls only on models that advertise support
 - Image input for models that advertise image capability
 - Agent mode function-tool calls
 
@@ -35,7 +36,7 @@ This extension is a native VS Code `LanguageModelChatProvider`. It validates a u
 
 To use more than one account or key, add another **CrofAI** entry. Each entry keeps its own credential and model list. The legacy **CrofAI: Configure API Key** command remains available for command-driven workflows.
 
-Choose **None**, **Low**, **Medium**, or **High** from the reasoning control in Copilot Chat. A per-request selection overrides `crofCopilot.reasoningEffort`.
+For models that support configurable reasoning, choose **None**, **Low**, **Medium**, or **High** from the reasoning control in Copilot Chat. A per-request selection overrides `crofCopilot.reasoningEffort`.
 
 ## Documentation
 

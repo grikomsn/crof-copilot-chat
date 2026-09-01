@@ -54,6 +54,10 @@
         "title": "CrofAI: Refresh Models"
       },
       {
+        "command": "crofCopilot.showUsage",
+        "title": "CrofAI: Show Credits and Usage"
+      },
+      {
         "command": "crofCopilot.testConnection",
         "title": "CrofAI: Test Inference"
       },
@@ -109,6 +113,11 @@
           "default": 5,
           "minimum": 1,
           "description": "How long the CrofAI hosted-model catalog is reused before refreshing."
+        },
+        "crofCopilot.showUsageStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the active CrofAI account credit balance and request allowance in the status bar."
         },
         "crofCopilot.debugLogging": {
           "type": "boolean",

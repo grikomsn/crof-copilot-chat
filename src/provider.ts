@@ -6,8 +6,8 @@ import {
   FALLBACK_MODELS,
   formatTokenLimit,
   formatModelName,
+  enrichModelMetadata,
   orderModelMetadata,
-  resolveMaxOutputTokens,
   type CrofAIApiModel,
   type CrofAIModelMetadata,
 } from "./models/catalog";
@@ -19,43 +19,40 @@ import {
   type ReasoningEffort,
 } from "./models/options";
 import { modelPricingFields } from "./models/pricing";
-import { ChatCompletionStreamParser, type ChatStreamEvent, validateStreamCompletion } from "./transport/sse";
+import { parseCatalogSnapshots } from "./models/cache";
+import { ModelsDevMetadata } from "./models/metadata";
+import { ChatCompletionStreamParser, validateStreamCompletion } from "./transport/sse";
 import { CROF_ENDPOINTS, crofHeaders } from "./transport/protocol";
-import { toProviderUsagePayload } from "./usage/domain";
+import { apiError } from "./transport/errors";
+import { mergeAccountUsage, recordRequestUsage, type CrofUsageSnapshot } from "./usage/domain";
 import { apiKeyFromConfiguration, credentialRefForApiKey, qualifiedModelId } from "./provider-profile";
+import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./provider/retry";
+import { messageToText } from "./provider/messages";
+import { buildRequest } from "./provider/request";
+import { reportEvent } from "./provider/response";
 
 export { API_BASE } from "./transport/protocol";
 
 export interface CrofAIModel extends vscode.LanguageModelChatInformation {
   rawModelId: string;
   credentialRef: string;
-}
-
-interface ApiMessage {
-  role: "user" | "assistant" | "tool";
-  content: string | ApiContentPart[] | null;
-  tool_calls?: ApiToolCall[];
-  tool_call_id?: string;
-}
-
-interface ApiContentPart {
-  type: "text" | "image_url";
-  text?: string;
-  image_url?: { url: string };
-}
-
-interface ApiToolCall {
-  id: string;
-  type: "function";
-  function: { name: string; arguments: string };
+  reasoningEffort: boolean;
 }
 
 export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIModel> {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
+  private readonly usageEmitter = new vscode.EventEmitter<{
+    credentialRef: string;
+    usage: CrofUsageSnapshot;
+  }>();
   readonly onDidChangeLanguageModelChatInformation = this.changeEmitter.event;
+  readonly onDidChangeUsage = this.usageEmitter.event;
   private readonly catalogs = new Map<string, CrofAIModelMetadata[]>();
   private readonly refreshedAt = new Map<string, number>();
   private readonly apiKeys = new Map<string, string>();
+  private readonly usage = new Map<string, CrofUsageSnapshot>();
+  private activeCredentialRef = "legacy";
+  private readonly metadata: ModelsDevMetadata;
 
   private get configuration(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration("crofCopilot");
@@ -69,7 +66,15 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     private readonly auth: CrofAIAuth,
     private readonly output: vscode.OutputChannel,
     private readonly userAgent: string,
-  ) {}
+    private readonly state?: vscode.Memento,
+  ) {
+    this.metadata = new ModelsDevMetadata(state ?? new MemoryMetadataCache());
+    for (const [key, catalog] of Object.entries(parseCatalogSnapshots(state?.get<unknown>(CATALOG_STATE_KEY))))
+      this.catalogs.set(key, catalog);
+    for (const [key, usage] of Object.entries(state?.get<Record<string, CrofUsageSnapshot>>(USAGE_STATE_KEY) ?? {})) {
+      if (usage && typeof usage === "object") this.usage.set(key, usage);
+    }
+  }
 
   fireDidChange(): void {
     this.changeEmitter.fire();
@@ -78,7 +83,11 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
   async configureApiKey(apiKey: string): Promise<string[]> {
     const models = await this.fetchModels(apiKey.trim());
     await this.auth.storeApiKey(apiKey);
+    this.apiKeys.set("legacy", apiKey.trim());
     this.setCatalog("legacy", models);
+    void this.refreshUsage("legacy").catch((error) => {
+      this.output.appendLine(`[usage] initial account refresh failed: ${messageOf(error)}`);
+    });
     this.changeEmitter.fire();
     return models.map(({ id }) => id);
   }
@@ -88,6 +97,7 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     this.apiKeys.delete("legacy");
     this.setCatalog("legacy", [...FALLBACK_MODEL_METADATA]);
     this.refreshedAt.delete("legacy");
+    this.setUsage("legacy", {});
     this.changeEmitter.fire();
   }
 
@@ -103,14 +113,11 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     token: vscode.CancellationToken,
   ): Promise<CrofAIModel[]> {
     const legacyApiKey = await this.auth.getApiKey();
-    const configuredApiKey = options.configuration
-      ? apiKeyFromConfiguration(options.configuration)
-      : undefined;
+    const configuredApiKey = options.configuration ? apiKeyFromConfiguration(options.configuration) : undefined;
     if (token.isCancellationRequested || (options.configuration && !configuredApiKey)) return [];
     const apiKey = configuredApiKey ?? legacyApiKey;
-    const credentialRef = configuredApiKey
-      ? credentialRefForApiKey(configuredApiKey, legacyApiKey)
-      : "legacy";
+    const credentialRef = configuredApiKey ? credentialRefForApiKey(configuredApiKey, legacyApiKey) : "legacy";
+    this.activeCredentialRef = credentialRef;
     if (apiKey) this.apiKeys.set(credentialRef, apiKey);
     const maxAge = Math.max(1, this.configuration.get("catalogCacheMinutes", 5)) * 60_000;
     if (apiKey && Date.now() - (this.refreshedAt.get(credentialRef) ?? 0) > maxAge) {
@@ -133,13 +140,21 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
         id: qualifiedModelId(credentialRef, metadata.id),
         rawModelId: metadata.id,
         credentialRef,
+        reasoningEffort: metadata.reasoningEffort,
         name: metadata.name || formatModelName(metadata.id),
         family: modelFamily(metadata.id),
         version: metadata.version,
-        detail: credentialRef === "legacy"
-          ? (apiKey ? "CrofAI" : "CrofAI API key required")
-          : `CrofAI · ${credentialRef.slice(0, 8)}`,
-        tooltip: `${metadata.id} via CrofAI · ${formatTokenLimit(metadata.contextLength)} context · ${formatTokenLimit(metadata.maxOutputTokens)} max output${metadata.imageInput ? " · image input" : " · text input"}${pricing ? ` · ${pricing.pricing}` : ""}`,
+        detail:
+          credentialRef === "legacy"
+            ? apiKey
+              ? "CrofAI"
+              : "CrofAI API key required"
+            : `CrofAI · ${credentialRef.slice(0, 8)}`,
+        tooltip: `${metadata.id} via CrofAI · ${formatTokenLimit(metadata.contextLength)} context · ${formatTokenLimit(
+          metadata.maxOutputTokens,
+        )} max output${metadata.imageInput ? " · image input" : " · text input"}${
+          metadata.releaseDate ? ` · released ${metadata.releaseDate}` : ""
+        }${pricing ? ` · ${pricing.pricing}` : ""}${metadata.description ? `\n${metadata.description}` : ""}`,
         maxInputTokens: metadata.contextLength,
         maxOutputTokens: metadata.maxOutputTokens,
         isUserSelectable: true,
@@ -147,10 +162,14 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure CrofAI API key" } }
           : {}),
-        configurationSchema: buildModelConfigurationSchema(defaultEffort),
+        ...(metadata.reasoningEffort
+          ? {
+              configurationSchema: buildModelConfigurationSchema(defaultEffort),
+            }
+          : {}),
         capabilities: {
           imageInput: metadata.imageInput,
-          toolCalling: true,
+          toolCalling: metadata.toolCalling,
         },
         ...(pricing ?? {}),
       };
@@ -175,7 +194,9 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
       options,
       reasoningEffort,
       model.maxOutputTokens,
+      this.configuration.get("maxOutputTokens", 0),
       Boolean(model.capabilities?.imageInput),
+      model.reasoningEffort,
     );
     const controller = new AbortController();
     const cancellation = token.onCancellationRequested(() => controller.abort());
@@ -197,9 +218,13 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     resetIdleTimeout();
     try {
       if (this.debugLogging) {
-        this.output.appendLine(`[request] model=${model.rawModelId} effort=${reasoningEffort} initiator=${options.requestInitiator ?? "unknown"}`);
+        this.output.appendLine(
+          `[request] model=${model.rawModelId} effort=${reasoningEffort} initiator=${
+            options.requestInitiator ?? "unknown"
+          }`,
+        );
       }
-      const response = await fetch(CROF_ENDPOINTS.chat, {
+      const response = await this.fetchInference({
         method: "POST",
         headers: this.requestHeaders(apiKey, "text/event-stream"),
         body: JSON.stringify(requestBody),
@@ -220,15 +245,18 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
         if (result.done) break;
         resetIdleTimeout();
         for (const event of parser.push(decoder.decode(result.value, { stream: true }))) {
-          this.reportEvent(event, progress);
+          reportEvent(event, progress, (usage) => this.recordUsage(model.credentialRef, model.rawModelId, usage));
         }
       }
-      for (const event of parser.finish()) this.reportEvent(event, progress);
+      for (const event of parser.finish())
+        reportEvent(event, progress, (usage) => this.recordUsage(model.credentialRef, model.rawModelId, usage));
       validateStreamCompletion(parser.finishReason);
     } catch (error) {
       if (token.isCancellationRequested) return;
-      if (timedOut === "idle") throw new Error(`CrofAI request for ${model.rawModelId} received no data for ${idleTimeoutSeconds} seconds`);
-      if (timedOut === "total") throw new Error(`CrofAI request for ${model.rawModelId} exceeded ${timeoutSeconds} seconds`);
+      if (timedOut === "idle")
+        throw new Error(`CrofAI request for ${model.rawModelId} received no data for ${idleTimeoutSeconds} seconds`);
+      if (timedOut === "total")
+        throw new Error(`CrofAI request for ${model.rawModelId} exceeded ${timeoutSeconds} seconds`);
       throw error;
     } finally {
       clearTimeout(totalTimeout);
@@ -246,7 +274,11 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     return Math.max(1, Math.ceil(text.length / 4));
   }
 
-  async testConnection(): Promise<{ model: string; reasoningEffort: ReasoningEffort; text: string }> {
+  async testConnection(): Promise<{
+    model: string;
+    reasoningEffort: ReasoningEffort;
+    text: string;
+  }> {
     const credentialRef = "legacy";
     const apiKey = await this.requireApiKey(false, credentialRef);
     const models = this.catalogFor(credentialRef);
@@ -255,19 +287,64 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
       undefined,
       this.configuration.get("reasoningEffort", DEFAULT_REASONING_EFFORT),
     );
+    const requestBody = {
+      model,
+      messages: [
+        {
+          role: "user",
+          content: "Reply with exactly: CrofAI connection verified",
+        },
+      ],
+      max_completion_tokens: 512,
+      stream: false,
+    };
     const response = await fetch(CROF_ENDPOINTS.chat, {
       method: "POST",
       headers: this.requestHeaders(apiKey, "application/json"),
-      body: JSON.stringify(applyReasoningEffort({
-        model,
-        messages: [{ role: "user", content: "Reply with exactly: CrofAI connection verified" }],
-        max_completion_tokens: 512,
-        stream: false,
-      }, reasoningEffort)),
+      body: JSON.stringify(
+        models[0]?.reasoningEffort ? applyReasoningEffort(requestBody, reasoningEffort) : requestBody,
+      ),
     });
     if (!response.ok) throw await apiError("CrofAI connection test failed", response);
-    const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return { model, reasoningEffort, text: body.choices?.[0]?.message?.content?.trim() ?? "(empty response)" };
+    const responseBody = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return {
+      model,
+      reasoningEffort,
+      text: responseBody.choices?.[0]?.message?.content?.trim() ?? "(empty response)",
+    };
+  }
+
+  getActiveCredentialRef(): string {
+    return this.activeCredentialRef;
+  }
+  getUsageSnapshot(credentialRef = this.activeCredentialRef): CrofUsageSnapshot {
+    return this.usage.get(credentialRef) ?? {};
+  }
+  getUsageSnapshots(): Record<string, CrofUsageSnapshot> {
+    return Object.fromEntries(this.usage);
+  }
+
+  async refreshUsage(credentialRef = this.activeCredentialRef): Promise<CrofUsageSnapshot> {
+    const apiKey = await this.requireApiKey(false, credentialRef);
+    try {
+      const response = await fetch(CROF_ENDPOINTS.usage, {
+        headers: this.requestHeaders(apiKey, "application/json"),
+      });
+      if (!response.ok) throw await apiError("Unable to load CrofAI account usage", response);
+      const next = mergeAccountUsage(this.getUsageSnapshot(credentialRef), await response.json());
+      this.setUsage(credentialRef, next);
+      return next;
+    } catch (error) {
+      const next = {
+        ...this.getUsageSnapshot(credentialRef),
+        updatedAt: Date.now(),
+        error: messageOf(error),
+      };
+      this.setUsage(credentialRef, next);
+      throw error;
+    }
   }
 
   private async fetchModels(apiKey: string): Promise<CrofAIModelMetadata[]> {
@@ -277,7 +354,10 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     });
     if (!response.ok) throw await apiError("Unable to list CrofAI models", response);
     const body = (await response.json()) as { data?: CrofAIApiModel[] };
-    const models = orderModelMetadata(body.data ?? []);
+    const enrichment = await this.metadata.getOrRefresh();
+    const models = orderModelMetadata(body.data ?? []).map((model) =>
+      enrichModelMetadata(model, enrichment.models[model.id]),
+    );
     if (!models.length) throw new Error("CrofAI returned no chat-capable models");
     if (this.debugLogging) this.output.appendLine(`[models] ${models.map(({ id }) => id).join(", ")}`);
     return models;
@@ -290,9 +370,11 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
       apiKey = await this.auth.getApiKey();
     }
     if (!apiKey) {
-      throw new Error(credentialRef === "legacy"
-        ? "CrofAI API key is not configured. Run ‘CrofAI: Configure API Key’."
-        : "The API key for this CrofAI provider entry is unavailable. Update the entry in Manage Language Models.");
+      throw new Error(
+        credentialRef === "legacy"
+          ? "CrofAI API key is not configured. Run ‘CrofAI: Configure API Key’."
+          : "The API key for this CrofAI provider entry is unavailable. Update the entry in Manage Language Models.",
+      );
     }
     return apiKey;
   }
@@ -309,6 +391,7 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
   private setCatalog(credentialRef: string, models: readonly CrofAIModelMetadata[]): void {
     this.catalogs.set(credentialRef, [...models]);
     this.refreshedAt.set(credentialRef, Date.now());
+    void this.state?.update(CATALOG_STATE_KEY, Object.fromEntries(this.catalogs));
   }
 
   private async refreshCatalog(
@@ -326,163 +409,61 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     return crofHeaders(apiKey, accept, this.userAgent);
   }
 
-  private reportEvent(
-    event: ChatStreamEvent,
-    progress: vscode.Progress<vscode.LanguageModelResponsePart2>,
-  ): void {
-    if (event.text) progress.report(new vscode.LanguageModelTextPart(event.text));
-    if (event.reasoning) {
-      const ThinkingPart = (vscode as unknown as { LanguageModelThinkingPart?: typeof vscode.LanguageModelThinkingPart })
-        .LanguageModelThinkingPart;
-      if (ThinkingPart) progress.report(new ThinkingPart(event.reasoning));
-    }
-    for (const tool of event.toolCalls ?? []) {
-      progress.report(new vscode.LanguageModelToolCallPart(
-        tool.id || `Crof-tool-${Date.now()}`,
-        tool.name,
-        parseArguments(tool.arguments),
-      ));
-    }
-    if (event.usage) {
-      const payload = toProviderUsagePayload(event.usage);
-      if (this.debugLogging) this.output.appendLine(`[usage] ${JSON.stringify(payload)}`);
-      progress.report(new vscode.LanguageModelDataPart(
-        new TextEncoder().encode(JSON.stringify(payload)),
-        "usage",
-      ));
-    }
-  }
-}
-
-function buildRequest(
-  model: string,
-  messages: readonly vscode.LanguageModelChatRequestMessage[],
-  options: vscode.ProvideLanguageModelChatResponseOptions,
-  reasoningEffort: ReasoningEffort,
-  advertisedMaxTokens: number,
-  imageInput: boolean,
-): Record<string, unknown> {
-  const configuredMaxTokens = vscode.workspace
-    .getConfiguration("crofCopilot")
-    .get("maxOutputTokens", 0);
-  const maxTokens = resolveMaxOutputTokens(configuredMaxTokens, advertisedMaxTokens);
-  const tools = (options.tools ?? []).map((tool) => ({
-    type: "function",
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: sanitizeSchema(tool.inputSchema),
-    },
-  }));
-  return applyReasoningEffort({
-    model,
-    messages: normalizeMessages(messages.flatMap((message) => convertMessage(message, imageInput))),
-    stream: true,
-    stream_options: { include_usage: true },
-    max_completion_tokens: maxTokens,
-    ...(tools.length ? { tools, tool_choice: toolMode(options.toolMode), parallel_tool_calls: true } : {}),
-  }, reasoningEffort);
-}
-
-function convertMessage(message: vscode.LanguageModelChatRequestMessage, imageInput: boolean): ApiMessage[] {
-  const role = message.role === vscode.LanguageModelChatMessageRole.Assistant ? "assistant" : "user";
-  const text: string[] = [];
-  const images: ApiContentPart[] = [];
-  const toolCalls: ApiToolCall[] = [];
-  const results: ApiMessage[] = [];
-
-  for (const part of message.content) {
-    if (part instanceof vscode.LanguageModelTextPart) text.push(part.value);
-    else if (part instanceof vscode.LanguageModelToolCallPart) {
-      toolCalls.push({
-        id: part.callId,
-        type: "function",
-        function: { name: part.name, arguments: JSON.stringify(part.input ?? {}) },
-      });
-    } else if (part instanceof vscode.LanguageModelToolResultPart) {
-      results.push({ role: "tool", tool_call_id: part.callId, content: part.content.map(inputPartText).join("\n") });
-    } else if (part instanceof vscode.LanguageModelDataPart && part.mimeType.startsWith("image/")) {
-      if (!imageInput) throw new Error("The selected CrofAI model does not advertise image input support.");
-      images.push({
-        type: "image_url",
-        image_url: { url: `data:${part.mimeType};base64,${Buffer.from(part.data).toString("base64")}` },
-      });
+  private async fetchInference(init: RequestInit): Promise<Response> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const response = await fetch(CROF_ENDPOINTS.chat, init);
+        if (attempt >= 2 || !isTransientServerError(response.status)) return response;
+        const delay = retryDelayMs(attempt, response.headers.get("retry-after"));
+        this.output.appendLine(`[retry] transient HTTP ${response.status}; attempt=${attempt + 2} delayMs=${delay}`);
+        await response.body?.cancel().catch(() => undefined);
+        await waitForRetry(delay, init.signal);
+      } catch (error) {
+        if (attempt >= 2 || !isTransientNetworkError(error)) throw error;
+        const delay = retryDelayMs(attempt);
+        this.output.appendLine(`[retry] transient network failure; attempt=${attempt + 2} delayMs=${delay}`);
+        await waitForRetry(delay, init.signal);
+      }
     }
   }
 
-  const plainText = text.join("\n");
-  const content: string | ApiContentPart[] = images.length
-    ? [...(plainText ? [{ type: "text" as const, text: plainText }] : []), ...images]
-    : plainText;
-  if (role === "assistant" && toolCalls.length) {
-    return [{ role, content: content || null, tool_calls: toolCalls }];
+  private recordUsage(credentialRef: string, modelId: string, raw: Record<string, unknown>): void {
+    this.setUsage(credentialRef, recordRequestUsage(this.getUsageSnapshot(credentialRef), raw, modelId));
+    if (this.debugLogging) this.output.appendLine(`[usage] model=${modelId} recorded`);
   }
-  if (results.length) return content ? [{ role, content }, ...results] : results;
-  return [{ role, content }];
-}
 
-function normalizeMessages(messages: ApiMessage[]): ApiMessage[] {
-  const filtered = messages.filter((message) =>
-    Boolean(message.tool_calls?.length || message.tool_call_id || message.content),
-  );
-  if (filtered[0]?.role === "assistant") {
-    filtered.unshift({ role: "user", content: "Continue from the previous assistant response." });
-  }
-  return filtered.length ? filtered : [{ role: "user", content: "" }];
-}
-
-function inputPartText(part: vscode.LanguageModelInputPart | unknown): string {
-  if (part instanceof vscode.LanguageModelTextPart) return part.value;
-  if (part instanceof vscode.LanguageModelToolCallPart) return JSON.stringify(part.input ?? {});
-  if (part instanceof vscode.LanguageModelToolResultPart) return part.content.map(inputPartText).join("\n");
-  if (part instanceof vscode.LanguageModelDataPart) return `[${part.mimeType} data omitted]`;
-  if (typeof part === "string") return part;
-  return "";
-}
-
-function messageToText(message: vscode.LanguageModelChatRequestMessage): string {
-  return message.content.map(inputPartText).join("\n");
-}
-
-function sanitizeSchema(schema: unknown): Record<string, unknown> {
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    return { type: "object", properties: {} };
-  }
-  return schema as Record<string, unknown>;
-}
-
-function toolMode(mode: vscode.LanguageModelChatToolMode | undefined): "auto" | "required" {
-  return mode === vscode.LanguageModelChatToolMode.Required ? "required" : "auto";
-}
-
-function parseArguments(value: string): object {
-  try {
-    const parsed = JSON.parse(value || "{}");
-    return typeof parsed === "object" && parsed !== null ? parsed : { value: parsed };
-  } catch {
-    return { value };
+  private setUsage(credentialRef: string, usage: CrofUsageSnapshot): void {
+    this.usage.set(credentialRef, usage);
+    this.usageEmitter.fire({ credentialRef, usage });
+    void this.state?.update(USAGE_STATE_KEY, Object.fromEntries(this.usage));
   }
 }
 
-async function apiError(prefix: string, response: Response): Promise<Error> {
-  const text = (await response.text().catch(() => "")).trim();
-  let detail = text;
-  try {
-    const json = JSON.parse(text) as {
-      error?: { message?: string } | string;
-      detail?: string;
-      message?: string;
-      title?: string;
-    };
-    detail = typeof json.error === "string"
-      ? json.error
-      : json.error?.message ?? json.detail ?? json.message ?? json.title ?? text;
-  } catch {
-    // Use the response text as-is.
+const CATALOG_STATE_KEY = "crofCopilot.catalogs.v1";
+const USAGE_STATE_KEY = "crofCopilot.usageSnapshots.v1";
+
+class MemoryMetadataCache {
+  get<T>(_key: string): T | undefined {
+    return undefined;
   }
-  return new Error(`${prefix} (HTTP ${response.status})${detail ? `: ${detail.slice(0, 1000)}` : ""}`);
+  async update(_key: string, _value: unknown): Promise<void> {}
 }
 
 function modelFamily(modelId: string): string {
   return modelId.toLowerCase().split(/[-/]/, 1)[0] || "crofai";
+}
+
+async function waitForRetry(milliseconds: number, signal: AbortSignal | null | undefined): Promise<void> {
+  if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, milliseconds);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      },
+      { once: true },
+    );
+  });
 }

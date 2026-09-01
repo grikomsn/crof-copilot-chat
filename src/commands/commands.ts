@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { CrofAIAuth } from "../auth/auth";
 import { messageOf } from "../errors";
 import { API_BASE, CrofAIProvider } from "../provider";
+import { formatUsageRows, type UsageDisplayRow } from "../usage/domain";
 
 const API_KEYS_URL = "https://crof.ai/dashboard";
 
@@ -17,22 +18,20 @@ export function registerCommands(
     vscode.commands.registerCommand("crofCopilot.configureApiKey", () => configureApiKey(provider, output)),
     vscode.commands.registerCommand("crofCopilot.removeApiKey", () => removeApiKey(provider)),
     vscode.commands.registerCommand("crofCopilot.refreshModels", () => refreshModels(provider)),
+    vscode.commands.registerCommand("crofCopilot.showUsage", () => showUsage(provider, output)),
     vscode.commands.registerCommand("crofCopilot.testConnection", () => testConnection(provider, output)),
     vscode.commands.registerCommand("crofCopilot.openApiKeys", () => openApiKeys()),
     vscode.commands.registerCommand("crofCopilot.diagnostics", () => diagnostics(auth, output)),
   ];
 }
 
-async function manage(
-  auth: CrofAIAuth,
-  provider: CrofAIProvider,
-  output: vscode.OutputChannel,
-): Promise<void> {
+async function manage(auth: CrofAIAuth, provider: CrofAIProvider, output: vscode.OutputChannel): Promise<void> {
   const configured = await auth.hasApiKey();
   const choices = configured
     ? [
         { label: "$(check) Test CrofAI inference", action: "test" },
         { label: "$(refresh) Refresh hosted models", action: "refresh" },
+        { label: "$(credit-card) Show credits and allowance", action: "usage" },
         { label: "$(key) Replace API key", action: "configure" },
         { label: "$(link-external) Open CrofAI API keys", action: "open" },
         { label: "$(output) Show CrofAI logs", action: "logs" },
@@ -51,29 +50,30 @@ async function manage(
   if (picked.action === "configure") await configureApiKey(provider, output);
   else if (picked.action === "refresh") await refreshModels(provider);
   else if (picked.action === "test") await testConnection(provider, output);
+  else if (picked.action === "usage") await showUsage(provider, output);
   else if (picked.action === "open") await openApiKeys();
   else if (picked.action === "logs") output.show(true);
   else if (picked.action === "diagnostics") await diagnostics(auth, output);
   else if (picked.action === "remove") await removeApiKey(provider);
 }
 
-async function configureApiKey(
-  provider: CrofAIProvider,
-  output: vscode.OutputChannel,
-): Promise<boolean> {
+async function configureApiKey(provider: CrofAIProvider, output: vscode.OutputChannel): Promise<boolean> {
   const apiKey = await vscode.window.showInputBox({
     title: "Configure CrofAI API key",
     prompt: "The key is validated with CrofAI, then stored in VS Code Secret Storage.",
     placeHolder: "Paste your CrofAI API key",
     password: true,
     ignoreFocusOut: true,
-    validateInput: (value) => value.trim() ? undefined : "Enter a CrofAI API key",
+    validateInput: (value) => (value.trim() ? undefined : "Enter a CrofAI API key"),
   });
   if (!apiKey) return false;
 
   try {
     const models = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "Validating CrofAI API key…" },
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Validating CrofAI API key…",
+      },
       () => provider.configureApiKey(apiKey),
     );
     output.appendLine(`[auth] API key configured; models=${models.join(",")}`);
@@ -110,7 +110,10 @@ async function refreshModels(provider: CrofAIProvider): Promise<void> {
 async function testConnection(provider: CrofAIProvider, output: vscode.OutputChannel): Promise<void> {
   try {
     const result = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "Testing CrofAI inference…" },
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Testing CrofAI inference…",
+      },
       () => provider.testConnection(),
     );
     output.appendLine(`[test] model=${result.model} effort=${result.reasoningEffort} response=${result.text}`);
@@ -129,6 +132,57 @@ async function openApiKeys(): Promise<void> {
   if (!opened) vscode.window.showWarningMessage("VS Code could not open the CrofAI dashboard.");
 }
 
+interface UsageQuickPickItem extends vscode.QuickPickItem {
+  action?: "refresh" | "configure";
+}
+
+async function showUsage(provider: CrofAIProvider, output: vscode.OutputChannel): Promise<void> {
+  try {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Window,
+        title: "Refreshing CrofAI credits and allowance…",
+      },
+      () => provider.refreshUsage(),
+    );
+  } catch (error) {
+    output.appendLine(`[usage] manual refresh failed: ${messageOf(error)}`);
+  }
+  const rows = formatUsageRows(provider.getUsageSnapshot()).map(toUsageQuickPickItem);
+  const picked = await vscode.window.showQuickPick(
+    [
+      ...rows,
+      { label: "Actions", kind: vscode.QuickPickItemKind.Separator },
+      { label: "$(refresh) Refresh usage", action: "refresh" },
+      { label: "$(key) Configure or replace API key", action: "configure" },
+    ] satisfies UsageQuickPickItem[],
+    {
+      title: "CrofAI credits and request allowance",
+      placeHolder: "Account balance from CrofAI plus locally tracked inference tokens",
+      matchOnDescription: true,
+      matchOnDetail: true,
+    },
+  );
+  if (picked?.action === "refresh") await showUsage(provider, output);
+  else if (picked?.action === "configure") await configureApiKey(provider, output);
+}
+
+function toUsageQuickPickItem(row: UsageDisplayRow): UsageQuickPickItem {
+  const icons: Record<UsageDisplayRow["kind"], string> = {
+    credits: "$(credit-card)",
+    allowance: "$(calendar)",
+    tracked: "$(symbol-numeric)",
+    request: "$(history)",
+    warning: "$(warning)",
+    empty: "$(info)",
+  };
+  return {
+    label: `${icons[row.kind]} ${row.label}`,
+    description: row.description,
+    detail: row.detail,
+  };
+}
+
 async function diagnostics(auth: CrofAIAuth, output: vscode.OutputChannel): Promise<void> {
   const models = await vscode.lm.selectChatModels({ vendor: "crof" });
   const lines = [
@@ -143,6 +197,9 @@ async function diagnostics(auth: CrofAIAuth, output: vscode.OutputChannel): Prom
     ...models.map((model) => `- ${model.id} (${model.maxInputTokens} input tokens)`),
   ];
   output.appendLine(`[diagnostics] models=${models.length}`);
-  const doc = await vscode.workspace.openTextDocument({ content: lines.join("\n"), language: "markdown" });
+  const doc = await vscode.workspace.openTextDocument({
+    content: lines.join("\n"),
+    language: "markdown",
+  });
   await vscode.window.showTextDocument(doc, vscode.ViewColumn.Beside);
 }
