@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+### Minor Changes
+
+- e73445a: Add CrofAI credit and allowance status, capability-aware reasoning controls, durable catalog and usage state, decomposed provider helpers, and bounded pre-stream retries.
+
 ## 0.1.1
 
 ### Patch Changes
