@@ -116,9 +116,11 @@ async function testConnection(provider: CrofAIProvider, output: vscode.OutputCha
       },
       () => provider.testConnection(),
     );
-    output.appendLine(`[test] model=${result.model} effort=${result.reasoningEffort} response=${result.text}`);
+    output.appendLine(
+      `[test] model=${result.model} effort=${result.reasoningEffort ?? "model-default"} response=${result.text}`,
+    );
     vscode.window.showInformationMessage(
-      `CrofAI verified with ${result.model} (${result.reasoningEffort} effort): ${result.text}`,
+      `CrofAI verified with ${result.model}${result.reasoningEffort ? ` (${result.reasoningEffort} effort)` : ""}: ${result.text}`,
     );
   } catch (error) {
     const message = messageOf(error);
