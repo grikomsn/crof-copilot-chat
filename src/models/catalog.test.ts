@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   FALLBACK_MODELS,
+  enrichModelMetadata,
   formatModelName,
   formatTokenLimit,
   getModelMetadata,
@@ -41,6 +42,8 @@ test("provides documented fallback limits", () => {
     contextLength: 1_000_000,
     maxOutputTokens: 131_072,
     imageInput: false,
+    toolCalling: true,
+    reasoningEffort: true,
     cost: { input: 0.3, cacheRead: 0.05, output: 1.05 },
   });
   assert.equal(formatTokenLimit(1_000_000), "1M");
@@ -48,34 +51,89 @@ test("provides documented fallback limits", () => {
 });
 
 test("uses exactly the discovered catalog and advertised metadata", () => {
-  assert.deepEqual(orderModelMetadata([
-    { id: "custom-vision", name: "CrofAI: Custom Vision", context_length: 500_000, max_completion_tokens: 64_000, input_modalities: ["text", "image"] },
-    { id: "CUSTOM-VISION", context_length: 1_000_000 },
-    { id: "text-embedding-3-large", context_length: 1_000_000 },
-  ]), [{
-    id: "custom-vision",
-    name: "Custom Vision",
-    version: "unknown",
-    contextLength: 500_000,
-    maxOutputTokens: 64_000,
+  assert.deepEqual(
+    orderModelMetadata([
+      {
+        id: "custom-vision",
+        name: "CrofAI: Custom Vision",
+        context_length: 500_000,
+        max_completion_tokens: 64_000,
+        input_modalities: ["text", "image"],
+      },
+      { id: "CUSTOM-VISION", context_length: 1_000_000 },
+      { id: "text-embedding-3-large", context_length: 1_000_000 },
+    ]),
+    [
+      {
+        id: "custom-vision",
+        name: "Custom Vision",
+        version: "unknown",
+        contextLength: 500_000,
+        maxOutputTokens: 64_000,
+        imageInput: true,
+        toolCalling: true,
+        reasoningEffort: false,
+        cost: undefined,
+      },
+    ],
+  );
+});
+
+test("uses live capability flags and official reasoning fallbacks", () => {
+  const [live] = orderModelMetadata([
+    {
+      id: "glm-5.2",
+      tool_calling: false,
+      reasoning_effort: false,
+      created: 1_700_000_000,
+    },
+  ]);
+  assert.equal(live.toolCalling, false);
+  assert.equal(live.reasoningEffort, false);
+  assert.equal(live.releaseDate, "2023-11-14");
+  assert.equal(getModelMetadata("deepseek-v3.2").reasoningEffort, false);
+  assert.equal(getModelMetadata("kimi-k2.7-code").reasoningEffort, true);
+});
+
+test("fills descriptive and capability metadata from the Crof models.dev snapshot", () => {
+  const enriched = enrichModelMetadata(getModelMetadata("deepseek-v3.2"), {
+    id: "deepseek-v3.2",
+    description: "General coding model",
     imageInput: true,
-    cost: undefined,
-  }]);
+    toolCalling: true,
+    releaseDate: "2025-12-01",
+  });
+  assert.equal(enriched.description, "General coding model");
+  assert.equal(enriched.imageInput, true);
+  assert.equal(enriched.releaseDate, "2025-12-01");
 });
 
 test("prefers live model pricing and falls back to CrofAI's official table", () => {
-  const [live] = orderModelMetadata([{
-    id: "deepseek-v3.2",
-    pricing: { prompt: "0.000001", cache_prompt: "0.0000002", completion: "0.000002" },
-  }]);
+  const [live] = orderModelMetadata([
+    {
+      id: "deepseek-v3.2",
+      pricing: {
+        prompt: "0.000001",
+        cache_prompt: "0.0000002",
+        completion: "0.000002",
+      },
+    },
+  ]);
   assert.deepEqual(live.cost, { input: 1, cacheRead: 0.2, output: 2 });
 
   const [fallback] = orderModelMetadata([{ id: "glm-5.2" }]);
-  assert.deepEqual(fallback.cost, { input: 0.3, cacheRead: 0.05, output: 1.05 });
+  assert.deepEqual(fallback.cost, {
+    input: 0.3,
+    cacheRead: 0.05,
+    output: 1.05,
+  });
 });
 
 test("falls back only when discovery returns no chat models", () => {
-  assert.deepEqual(orderModelMetadata([]).map(({ id }) => id), [...FALLBACK_MODELS]);
+  assert.deepEqual(
+    orderModelMetadata([]).map(({ id }) => id),
+    [...FALLBACK_MODELS],
+  );
 });
 
 test("uses the selected catalog limit for default and explicit output settings", () => {

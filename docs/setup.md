@@ -25,6 +25,7 @@ Provider-entry discovery uses `https://crof.ai/v1/models`. Models added to or re
 | **CrofAI: Configure API Key** | Validate and securely save a legacy command-managed API key |
 | **CrofAI: Remove API Key** | Delete the legacy key from VS Code Secret Storage |
 | **CrofAI: Refresh Models** | Fetch the current model list |
+| **CrofAI: Show Credits and Usage** | Refresh account credits and daily allowance, then show local request activity |
 | **CrofAI: Test Inference** | Send a small live inference request |
 | **CrofAI: Open API Keys** | Open the CrofAI dashboard |
 | **CrofAI: Show Diagnostics** | Show the endpoint, credential state, and registered models |
@@ -38,6 +39,7 @@ Provider-entry discovery uses `https://crof.ai/v1/models`. Models added to or re
 | `crofCopilot.requestTimeoutSeconds` | `600` | Total inference timeout in seconds |
 | `crofCopilot.streamIdleTimeoutSeconds` | `120` | Maximum time without streamed data |
 | `crofCopilot.catalogCacheMinutes` | `5` | How long the live model catalog is cached |
+| `crofCopilot.showUsageStatusBar` | `true` | Show credits or daily allowance for the active CrofAI entry |
 | `crofCopilot.debugLogging` | `false` | Log request, stream, usage, and discovery metadata |
 
 Prompts and API keys are never intentionally written to the output channel.
@@ -49,3 +51,5 @@ Prompts and API keys are never intentionally written to the output channel.
 - **A request times out:** increase `crofCopilot.requestTimeoutSeconds`.
 - **An image is rejected:** select a CrofAI model whose live metadata advertises image input.
 - **Need a diagnostic snapshot:** run **CrofAI: Show Diagnostics**. The report never includes the key.
+
+The last successful model catalog and account-usage snapshot are kept in VS Code global state for restart resilience. Inference retries only pre-stream network failures and HTTP 502/503/504 responses, at most twice, and honors bounded `Retry-After` delays.

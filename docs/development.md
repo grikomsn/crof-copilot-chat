@@ -8,7 +8,7 @@ npm test
 npm run package
 ```
 
-Tests are colocated with the modules they cover under `src/auth/`, `src/models/`, `src/transport/`, and `src/usage/`. `npm test` performs a clean compile and runs credential-storage, provider-configuration, model-filtering, stream-parser, protocol, and usage tests. `npm run package` validates the project and creates an installable VSIX.
+Tests are colocated with the modules they cover under `src/auth/`, `src/models/`, `src/provider/`, `src/transport/`, and `src/usage/`. `npm test` performs a clean compile and runs credential-storage, provider-configuration, model-filtering, retry, stream-parser, protocol, error, cache, and usage tests. `npm run package` validates the project and creates an installable VSIX.
 
 Install the local build with:
 
@@ -32,6 +32,6 @@ The packaged extension contains compiled runtime files, Marketplace metadata, th
 
 ## References
 
-- [CrofAI API overview](https://docs.Crof.ai/api/overview)
-- [OpenAI-compatible API examples](https://docs.Crof.ai/api/openai-api-examples)
-- [Supported CrofAI models](https://docs.Crof.ai/get-started/supported-models)
+- [CrofAI API documentation](https://crof.ai/docs)
+- [CrofAI model pricing and capabilities](https://crof.ai/pricing)
+- [CrofAI account usage API](https://crof.ai/usage_api/)
