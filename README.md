@@ -19,6 +19,7 @@ This extension is a native VS Code `LanguageModelChatProvider`. It validates a u
 - Direct CrofAI integration without a local proxy
 - API keys managed by VS Code Secret Storage or provider configuration
 - Multiple isolated CrofAI API-key entries in Manage Language Models
+- Current input, cached-input, and output pricing in the model picker
 - Live `/models` discovery with context and output limits from CrofAI metadata
 - Streaming text, `reasoning_content`, token usage, and function-tool calls
 - CrofAI reasoning effort controls: `none`, `low`, `medium`, and `high`
