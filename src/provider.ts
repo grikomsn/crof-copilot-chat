@@ -276,7 +276,7 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
 
   async testConnection(): Promise<{
     model: string;
-    reasoningEffort: ReasoningEffort;
+    reasoningEffort?: ReasoningEffort;
     text: string;
   }> {
     const credentialRef = "legacy";
@@ -311,7 +311,7 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     };
     return {
       model,
-      reasoningEffort,
+      ...(models[0]?.reasoningEffort ? { reasoningEffort } : {}),
       text: responseBody.choices?.[0]?.message?.content?.trim() ?? "(empty response)",
     };
   }
