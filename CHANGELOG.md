@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+### Patch Changes
+
+- 35cb867: Show CrofAI model pricing in the Copilot model picker using live catalog metadata with current official fallbacks.
+
 ## 0.1.0
 
 - Add a native CrofAI provider for GitHub Copilot Chat.
