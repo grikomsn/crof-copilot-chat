@@ -1,3 +1,5 @@
+import { crofModelCost, modelCostFromApi, type ModelCost } from "./pricing";
+
 export const FALLBACK_MODELS = ["deepseek-v3.2", "kimi-k2.7-code", "glm-5.2", "qwen3.8-27b"] as const;
 
 export const DEFAULT_MAX_INPUT_TOKENS = 262_144;
@@ -10,6 +12,7 @@ export interface CrofAIModelMetadata {
   readonly contextLength: number;
   readonly maxOutputTokens: number;
   readonly imageInput: boolean;
+  readonly cost?: ModelCost;
 }
 
 export interface CrofAIApiModel {
@@ -23,6 +26,7 @@ export interface CrofAIApiModel {
   readonly max_completion_tokens?: unknown;
   readonly input_modalities?: unknown;
   readonly architecture?: unknown;
+  readonly pricing?: unknown;
 }
 
 export const FALLBACK_MODEL_METADATA: readonly CrofAIModelMetadata[] = [
@@ -104,11 +108,20 @@ function modelMetadataFromApi(raw: CrofAIApiModel): CrofAIModelMetadata | undefi
       ?? fallback.maxOutputTokens,
     imageInput: modalities?.some((value) => value.toLowerCase() === "image")
       ?? /(?:vision|\bvl\b)/i.test(rawName),
+    cost: crofModelCost(id, modelCostFromApi(raw.pricing)),
   };
 }
 
 function model(id: string, contextLength: number, maxOutputTokens: number): CrofAIModelMetadata {
-  return { id, name: formatModelName(id), version: "unknown", contextLength, maxOutputTokens, imageInput: false };
+  return {
+    id,
+    name: formatModelName(id),
+    version: "unknown",
+    contextLength,
+    maxOutputTokens,
+    imageInput: false,
+    cost: crofModelCost(id),
+  };
 }
 
 function canonicalModelId(id: string): string {

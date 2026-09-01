@@ -41,6 +41,7 @@ test("provides documented fallback limits", () => {
     contextLength: 1_000_000,
     maxOutputTokens: 131_072,
     imageInput: false,
+    cost: { input: 0.3, cacheRead: 0.05, output: 1.05 },
   });
   assert.equal(formatTokenLimit(1_000_000), "1M");
   assert.equal(formatTokenLimit(262_144), "256K");
@@ -58,7 +59,19 @@ test("uses exactly the discovered catalog and advertised metadata", () => {
     contextLength: 500_000,
     maxOutputTokens: 64_000,
     imageInput: true,
+    cost: undefined,
   }]);
+});
+
+test("prefers live model pricing and falls back to CrofAI's official table", () => {
+  const [live] = orderModelMetadata([{
+    id: "deepseek-v3.2",
+    pricing: { prompt: "0.000001", cache_prompt: "0.0000002", completion: "0.000002" },
+  }]);
+  assert.deepEqual(live.cost, { input: 1, cacheRead: 0.2, output: 2 });
+
+  const [fallback] = orderModelMetadata([{ id: "glm-5.2" }]);
+  assert.deepEqual(fallback.cost, { input: 0.3, cacheRead: 0.05, output: 1.05 });
 });
 
 test("falls back only when discovery returns no chat models", () => {

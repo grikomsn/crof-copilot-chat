@@ -18,6 +18,7 @@ import {
   resolveReasoningEffort,
   type ReasoningEffort,
 } from "./models/options";
+import { modelPricingFields } from "./models/pricing";
 import { ChatCompletionStreamParser, type ChatStreamEvent, validateStreamCompletion } from "./transport/sse";
 import { CROF_ENDPOINTS, crofHeaders } from "./transport/protocol";
 import { toProviderUsagePayload } from "./usage/domain";
@@ -126,30 +127,34 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
       undefined,
       this.configuration.get("reasoningEffort", DEFAULT_REASONING_EFFORT),
     );
-    return this.catalogFor(credentialRef).map((metadata) => ({
-      id: qualifiedModelId(credentialRef, metadata.id),
-      rawModelId: metadata.id,
-      credentialRef,
-      name: metadata.name || formatModelName(metadata.id),
-      family: modelFamily(metadata.id),
-      version: metadata.version,
-      detail: credentialRef === "legacy"
-        ? (apiKey ? "CrofAI" : "CrofAI API key required")
-        : `CrofAI · ${credentialRef.slice(0, 8)}`,
-      tooltip: `${metadata.id} via CrofAI · ${formatTokenLimit(metadata.contextLength)} context · ${formatTokenLimit(metadata.maxOutputTokens)} max output${metadata.imageInput ? " · image input" : " · text input"}`,
-      maxInputTokens: metadata.contextLength,
-      maxOutputTokens: metadata.maxOutputTokens,
-      isUserSelectable: true,
-      ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
-      ...(credentialRef === "legacy" && !apiKey
-        ? { requiresAuthorization: { label: "Configure CrofAI API key" } }
-        : {}),
-      configurationSchema: buildModelConfigurationSchema(defaultEffort),
-      capabilities: {
-        imageInput: metadata.imageInput,
-        toolCalling: true,
-      },
-    }));
+    return this.catalogFor(credentialRef).map((metadata) => {
+      const pricing = modelPricingFields(metadata.cost);
+      return {
+        id: qualifiedModelId(credentialRef, metadata.id),
+        rawModelId: metadata.id,
+        credentialRef,
+        name: metadata.name || formatModelName(metadata.id),
+        family: modelFamily(metadata.id),
+        version: metadata.version,
+        detail: credentialRef === "legacy"
+          ? (apiKey ? "CrofAI" : "CrofAI API key required")
+          : `CrofAI · ${credentialRef.slice(0, 8)}`,
+        tooltip: `${metadata.id} via CrofAI · ${formatTokenLimit(metadata.contextLength)} context · ${formatTokenLimit(metadata.maxOutputTokens)} max output${metadata.imageInput ? " · image input" : " · text input"}${pricing ? ` · ${pricing.pricing}` : ""}`,
+        maxInputTokens: metadata.contextLength,
+        maxOutputTokens: metadata.maxOutputTokens,
+        isUserSelectable: true,
+        ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
+        ...(credentialRef === "legacy" && !apiKey
+          ? { requiresAuthorization: { label: "Configure CrofAI API key" } }
+          : {}),
+        configurationSchema: buildModelConfigurationSchema(defaultEffort),
+        capabilities: {
+          imageInput: metadata.imageInput,
+          toolCalling: true,
+        },
+        ...(pricing ?? {}),
+      };
+    });
   }
 
   async provideLanguageModelChatResponse(
