@@ -1,0 +1,161 @@
+{
+  "name": "crof-copilot-chat",
+  "displayName": "CrofAI for GitHub Copilot Chat",
+  "description": "Use hosted CrofAI coding models in GitHub Copilot Chat with your CrofAI API key.",
+  "version": "0.1.0",
+  "publisher": "grikomsn",
+  "icon": "assets/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/grikomsn/crof-copilot-chat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/grikomsn/crof-copilot-chat/issues"
+  },
+  "homepage": "https://github.com/grikomsn/crof-copilot-chat#readme",
+  "engines": {
+    "vscode": "^1.125.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "crofai",
+    "openai-compatible",
+    "copilot",
+    "copilot-chat",
+    "api-key",
+    "language-model"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguageModelChatProvider:crof"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "crofCopilot.manage",
+        "title": "CrofAI: Manage Connection"
+      },
+      {
+        "command": "crofCopilot.configureApiKey",
+        "title": "CrofAI: Configure API Key"
+      },
+      {
+        "command": "crofCopilot.removeApiKey",
+        "title": "CrofAI: Remove API Key"
+      },
+      {
+        "command": "crofCopilot.refreshModels",
+        "title": "CrofAI: Refresh Models"
+      },
+      {
+        "command": "crofCopilot.testConnection",
+        "title": "CrofAI: Test Inference"
+      },
+      {
+        "command": "crofCopilot.openApiKeys",
+        "title": "CrofAI: Open API Keys"
+      },
+      {
+        "command": "crofCopilot.diagnostics",
+        "title": "CrofAI: Show Diagnostics"
+      }
+    ],
+    "configuration": {
+      "title": "CrofAI for Copilot Chat",
+      "properties": {
+        "crofCopilot.reasoningEffort": {
+          "type": "string",
+          "enum": [
+            "none",
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "high",
+          "enumDescriptions": [
+            "Disable model reasoning.",
+            "Use less reasoning for lower latency and cost.",
+            "Balance reasoning depth, latency, and cost.",
+            "Use deeper reasoning for complex tasks."
+          ],
+          "description": "Default CrofAI reasoning effort. A Copilot model-picker selection overrides this value."
+        },
+        "crofCopilot.maxOutputTokens": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Maximum output tokens requested from CrofAI hosted models. Use 0 to use the selected model's advertised maximum."
+        },
+        "crofCopilot.requestTimeoutSeconds": {
+          "type": "number",
+          "default": 600,
+          "minimum": 10,
+          "description": "Maximum duration of a CrofAI inference request in seconds."
+        },
+        "crofCopilot.streamIdleTimeoutSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 10,
+          "description": "Maximum time without receiving streamed CrofAI response data before aborting a request."
+        },
+        "crofCopilot.catalogCacheMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "How long the CrofAI hosted-model catalog is reused before refreshing."
+        },
+        "crofCopilot.debugLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log request, stream, usage, and model-discovery metadata to the CrofAI output channel. Prompts and API keys are never logged."
+        }
+      }
+    },
+    "languageModelChatProviders": [
+      {
+        "vendor": "crof",
+        "displayName": "CrofAI",
+        "configuration": {
+          "type": "object",
+          "required": [
+            "apiKey"
+          ],
+          "properties": {
+            "apiKey": {
+              "type": "string",
+              "title": "CrofAI API Key",
+              "description": "API key for this CrofAI provider entry. VS Code stores configured secrets securely.",
+              "secret": true
+            }
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('out',{recursive:true,force:true})\"",
+    "compile": "npm run clean && tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node --test \"out/**/*.test.js\"",
+    "check": "npm test",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run check && vsce publish --skip-duplicate",
+    "prepackage": "npm run check",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.125.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^6.0.3"
+  }
+}
