@@ -35,6 +35,11 @@ export function crofModelCost(id: string, discovered?: ModelCost): ModelCost | u
   return discovered ?? OFFICIAL_MODEL_COSTS[id];
 }
 
+/**
+ * Converts the per-million pricing strings from `GET /v1/models` into costs.
+ * CrofAI reports rates already per 1M tokens (e.g. `"prompt": "0.35"`), so the
+ * values pass through unchanged; no per-token scaling is applied.
+ */
 export function modelCostFromApi(value: unknown): ModelCost | undefined {
   const pricing = record(value);
   if (!pricing) return undefined;
@@ -43,9 +48,9 @@ export function modelCostFromApi(value: unknown): ModelCost | undefined {
   if (input === undefined || output === undefined) return undefined;
   const cacheRead = nonNegativeNumber(pricing.cache_prompt);
   return {
-    input: perMillion(input),
-    output: perMillion(output),
-    ...(cacheRead === undefined ? {} : { cacheRead: perMillion(cacheRead) }),
+    input,
+    output,
+    ...(cacheRead === undefined ? {} : { cacheRead }),
   };
 }
 
@@ -79,10 +84,6 @@ export function costCategory(cost: Pick<ModelCost, "input" | "output">): ModelPr
 
 function formatPrice(value: number): string {
   return value.toFixed(6).replace(/\.?0+$/, "");
-}
-
-function perMillion(value: number): number {
-  return Number((value * 1_000_000).toFixed(6));
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
