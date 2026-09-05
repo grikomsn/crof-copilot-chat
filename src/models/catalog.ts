@@ -1,16 +1,10 @@
 import { crofModelCost, modelCostFromApi, type ModelCost } from "./pricing";
 import type { ModelsDevModelMetadata } from "./metadata";
 
-export const FALLBACK_MODELS = ["deepseek-v3.2", "kimi-k2.7-code", "glm-5.2", "qwen3.8-27b"] as const;
-
-export const DEFAULT_MAX_INPUT_TOKENS = 262_144;
-export const DEFAULT_MAX_OUTPUT_TOKENS = 131_072;
-
-const OFFICIAL_REASONING_EFFORT_MODELS = new Set([
+export const FALLBACK_MODELS = [
   "deepseek-v4-pro-0813",
-  "deepseek-v4-pro",
   "deepseek-v4-flash-0731",
-  "deepseek-v4-flash",
+  "deepseek-v4-flash-vision-exp",
   "kimi-k3",
   "kimi-k3-eco",
   "kimi-k2.7-code",
@@ -18,12 +12,31 @@ const OFFICIAL_REASONING_EFFORT_MODELS = new Set([
   "glm-5.3",
   "glm-5.3-flash",
   "glm-5.2",
-  "glm-5.1",
+  "greg-2-ultra",
+  "greg-2-super",
   "mimo-v2.5-pro",
   "gemma-4-31b-it",
   "qwen3.8-27b",
-  "qwen3.6-27b",
-  "qwen3.5-397b-a17b",
+  "qwen3.5-9b",
+] as const;
+
+export const DEFAULT_MAX_INPUT_TOKENS = 262_144;
+export const DEFAULT_MAX_OUTPUT_TOKENS = 131_072;
+
+const OFFICIAL_REASONING_EFFORT_MODELS = new Set([
+  "deepseek-v4-pro-0813",
+  "deepseek-v4-flash-0731",
+  "deepseek-v4-flash-vision-exp",
+  "kimi-k3",
+  "kimi-k3-eco",
+  "kimi-k2.7-code",
+  "kimi-k2.6",
+  "glm-5.3",
+  "glm-5.3-flash",
+  "glm-5.2",
+  "mimo-v2.5-pro",
+  "gemma-4-31b-it",
+  "qwen3.8-27b",
   "qwen3.5-9b",
 ]);
 
@@ -61,11 +74,37 @@ export interface CrofAIApiModel {
   readonly created?: unknown;
 }
 
+const OFFICIAL_MODEL_NAMES: Readonly<Record<string, string>> = {
+  "deepseek-v4-flash-vision-exp": "DeepSeek V4 Flash Vision (Experimental)",
+};
+
+const VENDOR_LABELS: Readonly<Record<string, string>> = {
+  deepseek: "DeepSeek",
+  kimi: "Kimi",
+  glm: "GLM",
+  greg: "Greg",
+  mimo: "MiMo",
+  gemma: "Gemma",
+  qwen: "Qwen",
+};
+
 export const FALLBACK_MODEL_METADATA: readonly CrofAIModelMetadata[] = [
-  model("deepseek-v3.2", 163_840, 163_840),
+  model("deepseek-v4-pro-0813", 1_000_000, 131_072),
+  model("deepseek-v4-flash-0731", 1_000_000, 131_072),
+  model("deepseek-v4-flash-vision-exp", 1_000_000, 131_072, true),
+  model("kimi-k3", 1_000_000, 262_144),
+  model("kimi-k3-eco", 1_000_000, 131_072),
   model("kimi-k2.7-code", 262_144, 262_144),
+  model("kimi-k2.6", 262_144, 262_144),
+  model("glm-5.3", 1_000_000, 131_072),
+  model("glm-5.3-flash", 1_000_000, 131_072),
   model("glm-5.2", 1_000_000, 131_072),
+  model("greg-2-ultra", 229_376, 229_376),
+  model("greg-2-super", 229_376, 229_376),
+  model("mimo-v2.5-pro", 1_000_000, 131_072),
+  model("gemma-4-31b-it", 262_144, 262_144),
   model("qwen3.8-27b", 262_144, 262_144),
+  model("qwen3.5-9b", 262_144, 262_144),
 ];
 
 const PREFERRED_ORDER = new Map<string, number>(FALLBACK_MODELS.map((id, index) => [id, index]));
@@ -132,10 +171,31 @@ export function formatTokenLimit(tokens: number): string {
 }
 
 export function formatModelName(id: string): string {
-  return id
-    .split("-")
+  const canonical = canonicalModelId(id);
+  const official = OFFICIAL_MODEL_NAMES[canonical];
+  if (official) return official;
+  const parts = canonical.split("-");
+  // Keep the base-vendor brand casing (DeepSeek, MiMo, GLM, …) and strip it
+  // from the remaining label parts.
+  const vendor = VENDOR_LABELS[parts[0] ?? ""];
+  const rest = vendor ? parts.slice(1) : parts;
+  // Qwen families embed the version in the family name (qwen3.8) and keep the
+  // parameter count together (27b), so render the family and model separately.
+  if (parts[0]?.startsWith("qwen") && !vendor) {
+    const [family, ...tail] = parts;
+    return `${family.charAt(0).toUpperCase() + family.slice(1)} ${
+      tail
+        .map((part) => (/\d+b$/i.test(part) ? part.toUpperCase() : part.charAt(0).toUpperCase() + part.slice(1)))
+        .join(" ")
+    }`.trim();
+  }
+  return `${vendor} ${formatModelLabel(rest)}`.trim();
+}
+
+function formatModelLabel(parts: string[]): string {
+  return parts
     .map((part) => {
-      if (/^(ai|glm|kimi|mimo|qwen|vl|v\d+(?:\.\d+)?)$/i.test(part)) return part.toUpperCase();
+      if (/^(ai|glm|kimi|mimo|qwen|vl|it|v\d+(?:\.\d+)?|k2\.\d|k3|27b|31b|9b)$/i.test(part)) return part.toUpperCase();
       return part.charAt(0).toUpperCase() + part.slice(1);
     })
     .join(" ");
@@ -148,14 +208,17 @@ function modelMetadataFromApi(raw: CrofAIApiModel): CrofAIModelMetadata | undefi
   const architecture = record(raw.architecture);
   const modalities = stringArray(raw.input_modalities) ?? stringArray(architecture?.input_modalities);
   const rawName = typeof raw.name === "string" ? raw.name : "";
+  const apiName = rawName.trim().replace(/^CrofAI:\s*/i, "").trim();
   return {
     id,
-    name: rawName.trim() ? rawName.replace(/^CrofAI:\s*/i, "").trim() : fallback.name,
+    name: OFFICIAL_MODEL_NAMES[id] ?? (apiName || fallback.name),
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
     contextLength:
       positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
     maxOutputTokens: positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens) ?? fallback.maxOutputTokens,
-    imageInput: modalities?.some((value) => value.toLowerCase() === "image") ?? /(?:vision|\bvl\b)/i.test(rawName),
+    imageInput:
+      modalities?.some((value) => value.toLowerCase() === "image")
+      ?? (/(?:vision|\bvl\b)/i.test(rawName) || /(?:^|[-/])vision(?:[-/.]|$)/.test(id)),
     toolCalling: boolean(raw.tool_calling ?? raw.tool_call) ?? fallback.toolCalling,
     reasoningEffort: boolean(raw.reasoning_effort ?? raw.custom_reasoning) ?? fallback.reasoningEffort,
     ...(typeof raw.description === "string" && raw.description.trim() ? { description: raw.description.trim() } : {}),
@@ -164,14 +227,14 @@ function modelMetadataFromApi(raw: CrofAIApiModel): CrofAIModelMetadata | undefi
   };
 }
 
-function model(id: string, contextLength: number, maxOutputTokens: number): CrofAIModelMetadata {
+function model(id: string, contextLength: number, maxOutputTokens: number, imageInput = false): CrofAIModelMetadata {
   return {
     id,
     name: formatModelName(id),
     version: "unknown",
     contextLength,
     maxOutputTokens,
-    imageInput: false,
+    imageInput,
     toolCalling: true,
     reasoningEffort: OFFICIAL_REASONING_EFFORT_MODELS.has(id),
     cost: crofModelCost(id),

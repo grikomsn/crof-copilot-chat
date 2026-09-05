@@ -14,10 +14,8 @@ export interface ModelPricingFields {
 
 const OFFICIAL_MODEL_COSTS: Readonly<Record<string, ModelCost>> = {
   "deepseek-v4-pro-0813": { input: 0.35, cacheRead: 0.01, output: 0.8 },
-  "deepseek-v4-pro": { input: 0.35, cacheRead: 0.003, output: 0.8 },
   "deepseek-v4-flash-0731": { input: 0.08, cacheRead: 0.003, output: 0.1 },
-  "deepseek-v4-flash": { input: 0.12, cacheRead: 0.003, output: 0.21 },
-  "deepseek-v3.2": { input: 0.18, cacheRead: 0.04, output: 0.35 },
+  "deepseek-v4-flash-vision-exp": { input: 0.08, cacheRead: 0.007, output: 0.2 },
   "kimi-k3": { input: 2, cacheRead: 0.25, output: 8 },
   "kimi-k3-eco": { input: 1, cacheRead: 0.1, output: 4 },
   "kimi-k2.7-code": { input: 0.55, cacheRead: 0.05, output: 2.25 },
@@ -25,16 +23,11 @@ const OFFICIAL_MODEL_COSTS: Readonly<Record<string, ModelCost>> = {
   "glm-5.3": { input: 0.4, cacheRead: 0.06, output: 1.4 },
   "glm-5.3-flash": { input: 0.07, cacheRead: 0.01, output: 0.22 },
   "glm-5.2": { input: 0.3, cacheRead: 0.05, output: 1.05 },
-  "glm-5.1": { input: 0.45, cacheRead: 0.08, output: 2.15 },
   "greg-2-ultra": { input: 3, cacheRead: 0.5, output: 10 },
   "greg-2-super": { input: 1.5, cacheRead: 0.25, output: 5 },
-  "greg-1-mini": { input: 0.07, cacheRead: 0.01, output: 0.15 },
-  "greg-rp": { input: 0.1, cacheRead: 0.02, output: 0.3 },
   "mimo-v2.5-pro": { input: 0.4, cacheRead: 0.003, output: 0.8 },
   "gemma-4-31b-it": { input: 0.1, cacheRead: 0.02, output: 0.3 },
   "qwen3.8-27b": { input: 0.09, cacheRead: 0.01, output: 0.3 },
-  "qwen3.6-27b": { input: 0.2, cacheRead: 0.04, output: 1.5 },
-  "qwen3.5-397b-a17b": { input: 0.35, cacheRead: 0.07, output: 1.75 },
   "qwen3.5-9b": { input: 0.04, cacheRead: 0.008, output: 0.15 },
 };
 

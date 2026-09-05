@@ -13,7 +13,7 @@ import {
 } from "./catalog";
 
 test("accepts CrofAI chat model IDs and excludes non-chat families", () => {
-  assert.equal(isCrofAIChatModel("deepseek-v3.2"), true);
+  assert.equal(isCrofAIChatModel("deepseek-v4-pro-0813"), true);
   assert.equal(isCrofAIChatModel("kimi-k2.7-code"), true);
   assert.equal(isCrofAIChatModel("multilingual-e5-large-instruct"), true);
   assert.equal(isCrofAIChatModel("text-embedding-3-large"), false);
@@ -21,17 +21,18 @@ test("accepts CrofAI chat model IDs and excludes non-chat families", () => {
 });
 
 test("orders documented fallback models before other discovered models", () => {
-  assert.deepEqual(orderModels(["future-chat", "glm-5.2", "DEEPSEEK-V3.2", "deepseek-v3.2"]), [
+  assert.deepEqual(orderModels(["future-chat", "glm-5.2", "DEEPSEEK-V4-PRO-0813", "deepseek-v4-pro-0813"]), [
     FALLBACK_MODELS[0],
-    FALLBACK_MODELS[2],
+    FALLBACK_MODELS[9],
     "future-chat",
   ]);
 });
 
 test("formats model IDs for the VS Code picker", () => {
-  assert.equal(formatModelName("deepseek-v3.2"), "Deepseek V3.2");
+  assert.equal(formatModelName("deepseek-v4-pro-0813"), "DeepSeek V4 Pro 0813");
   assert.equal(formatModelName("glm-5.2"), "GLM 5.2");
-  assert.equal(formatModelName("qwen3.8-27b"), "Qwen3.8 27b");
+  assert.equal(formatModelName("deepseek-v4-flash-vision-exp"), "DeepSeek V4 Flash Vision (Experimental)");
+  assert.equal(formatModelName("qwen3.8-27b"), "Qwen3.8 27B");
 });
 
 test("provides documented fallback limits", () => {
@@ -45,6 +46,17 @@ test("provides documented fallback limits", () => {
     toolCalling: true,
     reasoningEffort: true,
     cost: { input: 0.3, cacheRead: 0.05, output: 1.05 },
+  });
+  assert.deepEqual(getModelMetadata("deepseek-v4-flash-vision-exp"), {
+    id: "deepseek-v4-flash-vision-exp",
+    name: "DeepSeek V4 Flash Vision (Experimental)",
+    version: "unknown",
+    contextLength: 1_000_000,
+    maxOutputTokens: 131_072,
+    imageInput: true,
+    toolCalling: true,
+    reasoningEffort: true,
+    cost: { input: 0.08, cacheRead: 0.007, output: 0.2 },
   });
   assert.equal(formatTokenLimit(1_000_000), "1M");
   assert.equal(formatTokenLimit(262_144), "256K");
@@ -91,13 +103,14 @@ test("uses live capability flags and official reasoning fallbacks", () => {
   assert.equal(live.toolCalling, false);
   assert.equal(live.reasoningEffort, false);
   assert.equal(live.releaseDate, "2023-11-14");
-  assert.equal(getModelMetadata("deepseek-v3.2").reasoningEffort, false);
+  assert.equal(getModelMetadata("deepseek-v4-flash-vision-exp").reasoningEffort, true);
   assert.equal(getModelMetadata("kimi-k2.7-code").reasoningEffort, true);
+  assert.equal(getModelMetadata("greg-2-ultra").reasoningEffort, false);
 });
 
 test("fills descriptive and capability metadata from the Crof models.dev snapshot", () => {
-  const enriched = enrichModelMetadata(getModelMetadata("deepseek-v3.2"), {
-    id: "deepseek-v3.2",
+  const enriched = enrichModelMetadata(getModelMetadata("deepseek-v4-pro-0813"), {
+    id: "deepseek-v4-pro-0813",
     description: "General coding model",
     imageInput: true,
     toolCalling: true,
@@ -111,7 +124,7 @@ test("fills descriptive and capability metadata from the Crof models.dev snapsho
 test("prefers live model pricing and falls back to CrofAI's official table", () => {
   const [live] = orderModelMetadata([
     {
-      id: "deepseek-v3.2",
+      id: "deepseek-v4-flash-vision-exp",
       pricing: {
         prompt: "0.000001",
         cache_prompt: "0.0000002",
@@ -127,6 +140,22 @@ test("prefers live model pricing and falls back to CrofAI's official table", () 
     cacheRead: 0.05,
     output: 1.05,
   });
+});
+
+test("uses the official display name when CrofAI reuses a colliding raw name", () => {
+  const [live] = orderModelMetadata([
+    {
+      id: "deepseek-v4-flash-vision-exp",
+      name: "DeepSeek: DeepSeek V4 Flash 0731",
+      context_length: 1_000_000,
+      max_completion_tokens: 131_072,
+      reasoning_effort: true,
+    },
+  ]);
+  assert.equal(live.id, "deepseek-v4-flash-vision-exp");
+  assert.equal(live.name, "DeepSeek V4 Flash Vision (Experimental)");
+  assert.equal(live.reasoningEffort, true);
+  assert.equal(live.imageInput, true);
 });
 
 test("falls back only when discovery returns no chat models", () => {

@@ -43,7 +43,7 @@ test("tracks local request activity alongside the account balance", () => {
   const snapshot = recordRequestUsage(
     { account: { credits: 3, usableRequests: null } },
     { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10, cost: 0.001 },
-    "deepseek-v3.2",
+    "deepseek-v4-pro-0813",
     123,
   );
   assert.equal(snapshot.tracked?.requests, 1);
