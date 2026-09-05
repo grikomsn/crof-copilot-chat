@@ -38,6 +38,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "crofCopilot.setInlineSuggestionsModel",
+        "title": "CrofAI: Set Inline Suggestions Model"
+      },
+      {
         "command": "crofCopilot.manage",
         "title": "CrofAI: Manage Connection"
       },
