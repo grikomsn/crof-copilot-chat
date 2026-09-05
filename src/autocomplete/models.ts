@@ -24,47 +24,52 @@ export const INLINE_MODEL_CANDIDATES: readonly InlineModelCandidate[] = [
   {
     id: "glm-5.3-flash",
     badge: "★ recommended · measured 1.3s TTFB",
-    detail: "Only measured-clean model: zero hidden reasoning at reasoning_effort none, and the flash tier keeps cost low.",
-  },
-  {
-    id: "glm-5.3",
-    badge: "compatible · unmeasured",
-    detail: "Same GLM family as the default; accepts reasoning_effort none.",
-  },
-  {
-    id: "glm-5.2",
-    badge: "compatible · unmeasured",
-    detail: "Accepts reasoning_effort none per the hosted model metadata.",
-  },
-  {
-    id: "deepseek-v4-flash-0731",
-    badge: "compatible · unmeasured",
-    detail: "Accepts reasoning_effort none per the hosted model metadata.",
-  },
-  {
-    id: "deepseek-v4-pro-0813",
-    badge: "compatible · unmeasured",
-    detail: "Accepts reasoning_effort none per the hosted model metadata.",
-  },
-  {
-    id: "kimi-k3",
-    badge: "compatible · unmeasured",
-    detail: "Accepts reasoning_effort none per the hosted model metadata.",
-  },
-  {
-    id: "gemma-4-31b-it",
-    badge: "compatible · unmeasured",
-    detail: "Accepts reasoning_effort none per the hosted model metadata.",
-  },
-  {
-    id: "qwen3.8-27b",
-    badge: "compatible · unmeasured",
-    detail: "Accepts reasoning_effort none per the hosted model metadata.",
+    detail: "Fastest measured-clean model: zero hidden reasoning at reasoning_effort none, and the flash tier keeps cost low.",
   },
   {
     id: "mimo-v2.5-pro",
-    badge: "compatible · unmeasured",
-    detail: "Accepts reasoning_effort none per the hosted model metadata.",
+    badge: "measured 1.4s TTFB",
+    detail: "Zero hidden reasoning at reasoning_effort none with a correct completion.",
+  },
+  {
+    id: "deepseek-v4-flash-0731",
+    badge: "measured 1.5s TTFB",
+    detail: "Zero hidden reasoning at reasoning_effort none with a correct completion.",
+  },
+  {
+    id: "deepseek-v4-pro-0813",
+    badge: "measured 1.6s TTFB",
+    detail: "Zero hidden reasoning at reasoning_effort none with a correct completion.",
+  },
+  {
+    id: "glm-5.2",
+    badge: "measured 1.7s TTFB",
+    detail: "Zero hidden reasoning at reasoning_effort none with a correct completion.",
+  },
+  {
+    id: "gemma-4-31b-it",
+    badge: "⚠ measured: slow first token",
+    detail: "11s before the first content token at reasoning_effort none; not recommended.",
+  },
+  {
+    id: "qwen3.8-27b",
+    badge: "⚠ measured: wrong scaling",
+    detail: "Divides by max only instead of min-max; not recommended for ghost text.",
+  },
+  {
+    id: "deepseek-v4-flash-vision-exp",
+    badge: "⚠ measured: wrong scaling",
+    detail: "Divides by max only instead of min-max; not recommended.",
+  },
+  {
+    id: "kimi-k3",
+    badge: "⚠ measured: empty stream",
+    detail: "Streamed no content in testing despite a fast time-to-first-byte.",
+  },
+  {
+    id: "glm-5.3",
+    badge: "⚠ measured: empty stream",
+    detail: "Streamed no content in testing at reasoning_effort none.",
   },
   {
     id: "kimi-k3-eco",
