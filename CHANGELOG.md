@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+### Patch Changes
+
+- 13e727c: Fix model pricing units: CrofAI `/v1/models` reports rates per 1M tokens, so live pricing is no longer inflated one-thousand-fold in the model picker.
+
 ## 0.2.2
 
 ### Patch Changes
