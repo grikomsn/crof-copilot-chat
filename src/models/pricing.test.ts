@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { costCategory, crofModelCost, modelCostFromApi, modelPricingFields } from "./pricing";
 
-test("converts CrofAI per-token API rates to per-million costs", () => {
+test("passes through CrofAI per-million API rates without per-token scaling", () => {
   assert.deepEqual(modelCostFromApi({
-    prompt: "0.00000018",
-    cache_prompt: "0.00000004",
-    completion: "0.00000035",
-  }), { input: 0.18, cacheRead: 0.04, output: 0.35 });
+    prompt: "0.35",
+    cache_prompt: "0.01",
+    completion: "0.80",
+  }), { input: 0.35, cacheRead: 0.01, output: 0.8 });
+  assert.deepEqual(modelCostFromApi({
+    prompt: "0.08",
+    cache_prompt: "0.007",
+    completion: "0.20",
+  }), { input: 0.08, cacheRead: 0.007, output: 0.2 });
   assert.equal(modelCostFromApi({ prompt: "invalid", completion: "0.000001" }), undefined);
 });
 

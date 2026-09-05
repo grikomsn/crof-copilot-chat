@@ -126,9 +126,9 @@ test("prefers live model pricing and falls back to CrofAI's official table", () 
     {
       id: "deepseek-v4-flash-vision-exp",
       pricing: {
-        prompt: "0.000001",
-        cache_prompt: "0.0000002",
-        completion: "0.000002",
+        prompt: "1",
+        cache_prompt: "0.2",
+        completion: "2",
       },
     },
   ]);
