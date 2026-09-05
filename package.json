@@ -2,7 +2,7 @@
   "name": "crof-copilot-chat",
   "displayName": "CrofAI for GitHub Copilot Chat",
   "description": "Use hosted CrofAI coding models in GitHub Copilot Chat with your CrofAI API key.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "grikomsn",
   "icon": "assets/icon.png",
   "license": "MIT",
