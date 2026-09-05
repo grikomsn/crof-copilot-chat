@@ -41,6 +41,7 @@ For models that support configurable reasoning, choose **None**, **Low**, **Medi
 ## Documentation
 
 - [Setup, settings, and troubleshooting](docs/setup.md)
+- [Models and pricing](docs/models.md)
 - [API key and security model](docs/security.md)
 - [Development and releases](docs/development.md)
 

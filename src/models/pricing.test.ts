@@ -24,7 +24,8 @@ test("converts USD per-million rates to VS Code pricing fields", () => {
 
 test("uses current official rates when live metadata omits pricing", () => {
   assert.deepEqual(crofModelCost("glm-5.3-flash"), { input: 0.07, cacheRead: 0.01, output: 0.22 });
-  assert.deepEqual(crofModelCost("deepseek-v3.2", { input: 1, output: 2 }), { input: 1, output: 2 });
+  assert.deepEqual(crofModelCost("deepseek-v4-flash-vision-exp"), { input: 0.08, cacheRead: 0.007, output: 0.2 });
+  assert.deepEqual(crofModelCost("deepseek-v4-pro-0813", { input: 1, output: 2 }), { input: 1, output: 2 });
   assert.equal(crofModelCost("future-model"), undefined);
 });
 
