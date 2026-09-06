@@ -38,6 +38,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "crofCopilot.setInlineSuggestionsModel",
+        "title": "CrofAI: Set Inline Suggestions Model"
+      },
+      {
         "command": "crofCopilot.manage",
         "title": "CrofAI: Manage Connection"
       },
@@ -73,6 +77,56 @@
     "configuration": {
       "title": "CrofAI for Copilot Chat",
       "properties": {
+        "crofCopilot.inlineSuggestions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental. Provide ghost-text inline completions while typing, powered by the CrofAI gateway with reasoning_effort none. Credentials, prompts, and document context are never logged."
+        },
+        "crofCopilot.inlineSuggestionsModel": {
+          "type": "string",
+          "default": "glm-5.3-flash",
+          "description": "Model id used for inline completions. glm-5.3-flash measured cleanest (zero hidden reasoning at effort none); kimi-k2.6, kimi-k3-eco, greg-2 models, and qwen3.5-9b are not recommended for ghost text."
+        },
+        "crofCopilot.inlineSuggestionsChatInput": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also offer inline completions inside the Copilot Chat prompt box."
+        },
+        "crofCopilot.inlineSuggestionsDebounceMs": {
+          "type": "number",
+          "default": 300,
+          "minimum": 50,
+          "maximum": 2000,
+          "description": "Debounce window in milliseconds between typing and an inline completion request."
+        },
+        "crofCopilot.inlineSuggestionsTimeoutMs": {
+          "type": "number",
+          "default": 3000,
+          "minimum": 500,
+          "maximum": 15000,
+          "description": "Per-request timeout in milliseconds for inline completions."
+        },
+        "crofCopilot.inlineSuggestionsMaxTokens": {
+          "type": "number",
+          "default": 128,
+          "minimum": 16,
+          "maximum": 1024,
+          "description": "Maximum tokens generated per inline completion."
+        },
+        "crofCopilot.inlineSuggestionsPrefixLines": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Lines of document context sent before the cursor."
+        },
+        "crofCopilot.inlineSuggestionsSuffixChars": {
+          "type": "number",
+          "default": 300,
+          "minimum": 0,
+          "maximum": 5000,
+          "description": "Characters of document context sent after the cursor."
+        },
         "crofCopilot.reasoningEffort": {
           "type": "string",
           "enum": [
