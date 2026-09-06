@@ -15,6 +15,9 @@ import {
   DEFAULT_REASONING_EFFORT,
   applyReasoningEffort,
   buildModelConfigurationSchema,
+  contextSizeOptions,
+  resolveContextCap,
+  resolveContextSize,
   resolveReasoningEffort,
   type ReasoningEffort,
 } from "./models/options";
@@ -29,6 +32,7 @@ import { apiKeyFromConfiguration, credentialRefForApiKey, qualifiedModelId } fro
 import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./provider/retry";
 import { messageToText } from "./provider/messages";
 import { buildRequest } from "./provider/request";
+import { trimHistoryToFit } from "./provider/history-trim";
 import { reportEvent } from "./provider/response";
 
 export { API_BASE } from "./transport/protocol";
@@ -162,9 +166,12 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure CrofAI API key" } }
           : {}),
-        ...(metadata.reasoningEffort
+        ...(metadata.reasoningEffort || contextSizeOptions(metadata.contextLength)
           ? {
-              configurationSchema: buildModelConfigurationSchema(defaultEffort),
+              configurationSchema: buildModelConfigurationSchema(
+                metadata.reasoningEffort ? defaultEffort : undefined,
+                contextSizeOptions(metadata.contextLength),
+              ),
             }
           : {}),
         capabilities: {
@@ -197,6 +204,7 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
       this.configuration.get("maxOutputTokens", 0),
       Boolean(model.capabilities?.imageInput),
       model.reasoningEffort,
+      resolveContextCap(resolveContextSize(options.modelConfiguration), model.maxInputTokens),
     );
     const controller = new AbortController();
     const cancellation = token.onCancellationRequested(() => controller.abort());
