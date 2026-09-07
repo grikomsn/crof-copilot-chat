@@ -5,15 +5,18 @@ import {
   REASONING_EFFORTS,
   applyReasoningEffort,
   buildModelConfigurationSchema,
+  contextSizeOptions,
+  resolveContextCap,
+  resolveContextSize,
   resolveReasoningEffort,
 } from "./options";
 
 test("exposes CrofAI reasoning efforts in the model picker", () => {
   const schema = buildModelConfigurationSchema("medium");
-  assert.deepEqual(schema.properties.reasoningEffort.enum, REASONING_EFFORTS);
-  assert.deepEqual(schema.properties.reasoningEffort.enumItemLabels, ["None", "Low", "Medium", "High"]);
-  assert.equal(schema.properties.reasoningEffort.default, "medium");
-  assert.equal(schema.properties.reasoningEffort.group, "navigation");
+  assert.deepEqual(schema?.properties.reasoningEffort.enum, REASONING_EFFORTS);
+  assert.deepEqual(schema?.properties.reasoningEffort.enumItemLabels, ["None", "Low", "Medium", "High"]);
+  assert.equal(schema?.properties.reasoningEffort.default, "medium");
+  assert.equal(schema?.properties.reasoningEffort.group, "navigation");
 });
 
 test("per-request effort overrides the workspace default", () => {
@@ -36,4 +39,52 @@ test("sends CrofAI's documented reasoning_effort parameter", () => {
     model: "glm-5.2",
     reasoning_effort: "high",
   });
+});
+
+test("offers context tiers below the registered input limit", () => {
+  assert.deepEqual(contextSizeOptions(1_048_576)?.map((option) => option.value), ["auto", 65_536, 131_072, 200_000, 1_048_576]);
+  assert.deepEqual(contextSizeOptions(1_048_576)?.map((option) => option.label), ["Auto", "64K", "128K", "200K", "Maximum"]);
+  assert.equal(contextSizeOptions(65_536), undefined);
+  assert.equal(contextSizeOptions(32_000), undefined);
+});
+
+test("resolves the effective context cap from the selected tier", () => {
+  assert.equal(resolveContextCap(131_072, 1_048_576), 131_072);
+  assert.equal(resolveContextCap(1_500_000, 1_048_576), undefined);
+  assert.equal(resolveContextCap(0, 1_048_576), undefined);
+  assert.equal(resolveContextCap(65_536, 65_536), undefined);
+});
+
+test("reads the context size from picker configuration", () => {
+  assert.equal(resolveContextSize({ contextSize: 131_072 }), 131_072);
+  assert.equal(resolveContextSize({ contextSize: 0 }), 0);
+  assert.equal(resolveContextSize({ contextSize: "131072" }), 0);
+  assert.equal(resolveContextSize(undefined), 0);
+});
+
+test("exposes the Context Window control with and without reasoning controls", () => {
+  const combined = buildModelConfigurationSchema("medium", contextSizeOptions(1_048_576));
+  assert.deepEqual(combined?.properties.reasoningEffort.enum, REASONING_EFFORTS);
+  assert.deepEqual(combined?.properties.contextSize.enum, ["auto", 65_536, 131_072, 200_000, 1_048_576]);
+  assert.equal(combined?.properties.contextSize.default, "auto");
+  assert.equal(combined?.properties.contextSize.group, "tokens");
+  assert.equal(Object.entries(combined!.properties!).find(([, property]) => property.group === "tokens")?.[0], "contextSize");
+
+  const contextOnly = buildModelConfigurationSchema(undefined, contextSizeOptions(1_048_576));
+  assert.equal("reasoningEffort" in (contextOnly?.properties ?? {}), false);
+  assert.deepEqual(contextOnly?.properties.contextSize.enum, ["auto", 65_536, 131_072, 200_000, 1_048_576]);
+  assert.equal(buildModelConfigurationSchema(undefined, undefined), undefined);
+});
+
+// Mirrors VS Code's context indicator contract: numeric selections replace input,
+// while a nonnumeric Auto selection falls back to the registered input limit.
+test("Auto preserves the full context window in the VS Code indicator", () => {
+  for (const input of [78_000, 244_800, 983_040]) {
+    const options = contextSizeOptions(input)!;
+    const auto = options.find((option) => option.label === "Auto")!;
+    const output = 16_384;
+    const displayedInput = typeof auto.value === "number" ? auto.value : input;
+    assert.equal(displayedInput + output, input + output);
+    assert.ok(options.every((option) => typeof option.value !== "number" || option.value > 0));
+  }
 });

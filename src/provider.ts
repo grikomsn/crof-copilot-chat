@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { CrofAIAuth } from "./auth/auth";
 import { messageOf } from "./errors";
 import {
+  advertisedModelLimits,
   FALLBACK_MODEL_METADATA,
   FALLBACK_MODELS,
   formatTokenLimit,
@@ -15,6 +16,9 @@ import {
   DEFAULT_REASONING_EFFORT,
   applyReasoningEffort,
   buildModelConfigurationSchema,
+  contextSizeOptions,
+  resolveContextCap,
+  resolveContextSize,
   resolveReasoningEffort,
   type ReasoningEffort,
 } from "./models/options";
@@ -29,6 +33,7 @@ import { apiKeyFromConfiguration, credentialRefForApiKey, qualifiedModelId } fro
 import { isTransientNetworkError, isTransientServerError, retryDelayMs } from "./provider/retry";
 import { messageToText } from "./provider/messages";
 import { buildRequest } from "./provider/request";
+import { trimHistoryToFit } from "./provider/history-trim";
 import { reportEvent } from "./provider/response";
 
 export { API_BASE } from "./transport/protocol";
@@ -136,6 +141,7 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     );
     return this.catalogFor(credentialRef).map((metadata) => {
       const pricing = modelPricingFields(metadata.cost);
+      const limits = advertisedModelLimits(metadata, this.configuration.get("maxOutputTokens", 0));
       return {
         id: qualifiedModelId(credentialRef, metadata.id),
         rawModelId: metadata.id,
@@ -155,16 +161,18 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
         )} max output${metadata.imageInput ? " · image input" : " · text input"}${
           metadata.releaseDate ? ` · released ${metadata.releaseDate}` : ""
         }${pricing ? ` · ${pricing.pricing}` : ""}${metadata.description ? `\n${metadata.description}` : ""}`,
-        maxInputTokens: metadata.contextLength,
-        maxOutputTokens: metadata.maxOutputTokens,
+        ...limits,
         isUserSelectable: true,
         ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure CrofAI API key" } }
           : {}),
-        ...(metadata.reasoningEffort
+        ...(metadata.reasoningEffort || contextSizeOptions(limits.maxInputTokens)
           ? {
-              configurationSchema: buildModelConfigurationSchema(defaultEffort),
+              configurationSchema: buildModelConfigurationSchema(
+                metadata.reasoningEffort ? defaultEffort : undefined,
+                contextSizeOptions(limits.maxInputTokens),
+              ),
             }
           : {}),
         capabilities: {
@@ -197,6 +205,7 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
       this.configuration.get("maxOutputTokens", 0),
       Boolean(model.capabilities?.imageInput),
       model.reasoningEffort,
+      resolveContextCap(resolveContextSize(options.modelConfiguration), model.maxInputTokens),
     );
     const controller = new AbortController();
     const cancellation = token.onCancellationRequested(() => controller.abort());

@@ -101,7 +101,7 @@ export const FALLBACK_MODEL_METADATA: readonly CrofAIModelMetadata[] = [
   model("glm-5.2", 1_000_000, 131_072),
   model("greg-2-ultra", 229_376, 229_376),
   model("greg-2-super", 229_376, 229_376),
-  model("mimo-v2.5-pro", 1_000_000, 131_072),
+  model("mimo-v2.5-pro", 1_048_576, 131_072),
   model("gemma-4-31b-it", 262_144, 262_144),
   model("qwen3.8-27b", 262_144, 262_144),
   model("qwen3.5-9b", 262_144, 262_144),
@@ -214,7 +214,7 @@ function modelMetadataFromApi(raw: CrofAIApiModel): CrofAIModelMetadata | undefi
     name: OFFICIAL_MODEL_NAMES[id] ?? (apiName || fallback.name),
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
     contextLength:
-      positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
+      liveContextLength(raw) ?? fallback.contextLength,
     maxOutputTokens: positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens) ?? fallback.maxOutputTokens,
     imageInput:
       modalities?.some((value) => value.toLowerCase() === "image")
@@ -249,6 +249,11 @@ function positiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
+/** A positive live shared window is authoritative, independent of output capability. */
+function liveContextLength(raw: CrofAIApiModel): number | undefined {
+  return positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len);
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -266,4 +271,16 @@ function unixDate(value: unknown): string | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? new Date(value * 1_000).toISOString().slice(0, 10)
     : undefined;
+}
+
+/** Separate output capability from the response budget reserved by the chat UI. */
+export function advertisedModelLimits(
+  model: Pick<CrofAIModelMetadata, "contextLength" | "maxOutputTokens">,
+  configuredOutput = 0,
+): { maxInputTokens: number; maxOutputTokens: number } {
+  const requested = Number.isFinite(configuredOutput) && configuredOutput > 0
+    ? Math.floor(configuredOutput)
+    : 32_768;
+  const output = Math.max(1, Math.min(model.maxOutputTokens, requested, model.contextLength - 1));
+  return { maxInputTokens: Math.max(1, model.contextLength - output), maxOutputTokens: output };
 }
