@@ -101,7 +101,7 @@ export const FALLBACK_MODEL_METADATA: readonly CrofAIModelMetadata[] = [
   model("glm-5.2", 1_000_000, 131_072),
   model("greg-2-ultra", 229_376, 229_376),
   model("greg-2-super", 229_376, 229_376),
-  model("mimo-v2.5-pro", 1_000_000, 131_072),
+  model("mimo-v2.5-pro", 1_048_576, 131_072),
   model("gemma-4-31b-it", 262_144, 262_144),
   model("qwen3.8-27b", 262_144, 262_144),
   model("qwen3.5-9b", 262_144, 262_144),
