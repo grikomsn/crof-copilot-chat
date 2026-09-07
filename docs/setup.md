@@ -35,7 +35,7 @@ Provider-entry discovery uses `https://crof.ai/v1/models`. Models added to or re
 | Setting | Default | Purpose |
 | --- | ---: | --- |
 | `crofCopilot.reasoningEffort` | `high` | Default CrofAI reasoning effort (`none`, `low`, `medium`, or `high`) |
-| `crofCopilot.maxOutputTokens` | `0` | Output limit; `0` uses the selected model's advertised maximum |
+| `crofCopilot.maxOutputTokens` | `0` | Output limit; `0` reserves up to 32,768 response tokens |
 | `crofCopilot.requestTimeoutSeconds` | `600` | Total inference timeout in seconds |
 | `crofCopilot.streamIdleTimeoutSeconds` | `120` | Maximum time without streamed data |
 | `crofCopilot.catalogCacheMinutes` | `5` | How long the live model catalog is cached |
@@ -67,3 +67,7 @@ Inline code suggestions are experimental and off by default. When enabled, each 
 - **Need a diagnostic snapshot:** run **CrofAI: Show Diagnostics**. The report never includes the key.
 
 The last successful model catalog and account-usage snapshot are kept in VS Code global state for restart resilience. Inference retries only pre-stream network failures and HTTP 502/503/504 responses, at most twice, and honors bounded `Retry-After` delays.
+
+The response reserve is distinct from the model's maximum output capability.
+Input plus the reserved output equals the shared context window; live positive
+context metadata remains authoritative even when output capability equals it.

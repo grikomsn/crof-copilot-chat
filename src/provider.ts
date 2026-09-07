@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { CrofAIAuth } from "./auth/auth";
 import { messageOf } from "./errors";
 import {
+  advertisedModelLimits,
   FALLBACK_MODEL_METADATA,
   FALLBACK_MODELS,
   formatTokenLimit,
@@ -140,6 +141,7 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
     );
     return this.catalogFor(credentialRef).map((metadata) => {
       const pricing = modelPricingFields(metadata.cost);
+      const limits = advertisedModelLimits(metadata, this.configuration.get("maxOutputTokens", 0));
       return {
         id: qualifiedModelId(credentialRef, metadata.id),
         rawModelId: metadata.id,
@@ -159,18 +161,17 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
         )} max output${metadata.imageInput ? " · image input" : " · text input"}${
           metadata.releaseDate ? ` · released ${metadata.releaseDate}` : ""
         }${pricing ? ` · ${pricing.pricing}` : ""}${metadata.description ? `\n${metadata.description}` : ""}`,
-        maxInputTokens: Math.max(1, metadata.contextLength - metadata.maxOutputTokens),
-        maxOutputTokens: metadata.maxOutputTokens,
+        ...limits,
         isUserSelectable: true,
         ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure CrofAI API key" } }
           : {}),
-        ...(metadata.reasoningEffort || contextSizeOptions(Math.max(1, metadata.contextLength - metadata.maxOutputTokens))
+        ...(metadata.reasoningEffort || contextSizeOptions(limits.maxInputTokens)
           ? {
               configurationSchema: buildModelConfigurationSchema(
                 metadata.reasoningEffort ? defaultEffort : undefined,
-                contextSizeOptions(Math.max(1, metadata.contextLength - metadata.maxOutputTokens)),
+                contextSizeOptions(limits.maxInputTokens),
               ),
             }
           : {}),
