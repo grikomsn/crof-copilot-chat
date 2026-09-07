@@ -214,7 +214,7 @@ function modelMetadataFromApi(raw: CrofAIApiModel): CrofAIModelMetadata | undefi
     name: OFFICIAL_MODEL_NAMES[id] ?? (apiName || fallback.name),
     version: typeof raw.version === "string" && raw.version ? raw.version : fallback.version,
     contextLength:
-      positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len) ?? fallback.contextLength,
+      liveContextLength(raw, fallback.maxOutputTokens) ?? fallback.contextLength,
     maxOutputTokens: positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens) ?? fallback.maxOutputTokens,
     imageInput:
       modalities?.some((value) => value.toLowerCase() === "image")
@@ -247,6 +247,21 @@ function canonicalModelId(id: string): string {
 
 function positiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * A live context window must be strictly larger than the model's output
+ * budget, otherwise a thread would have no room for input. When the upstream
+ * reports a context that is not larger (e.g. it mislabels the output cap as
+ * the context), fall back to the documented context so the picker never
+ * collapses the usable window.
+ */
+function liveContextLength(raw: CrofAIApiModel, fallbackOutputTokens: number): number | undefined {
+  const context = positiveInteger(raw.context_length ?? raw.max_context_tokens ?? raw.max_model_len);
+  const output = positiveInteger(raw.max_completion_tokens ?? raw.max_output_tokens);
+  if (context === undefined) return undefined;
+  const minContext = output === undefined ? 1 : output + 1;
+  return context >= minContext ? context : undefined;
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

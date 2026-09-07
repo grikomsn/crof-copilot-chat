@@ -159,18 +159,18 @@ export class CrofAIProvider implements vscode.LanguageModelChatProvider<CrofAIMo
         )} max output${metadata.imageInput ? " · image input" : " · text input"}${
           metadata.releaseDate ? ` · released ${metadata.releaseDate}` : ""
         }${pricing ? ` · ${pricing.pricing}` : ""}${metadata.description ? `\n${metadata.description}` : ""}`,
-        maxInputTokens: metadata.contextLength,
+        maxInputTokens: Math.max(1, metadata.contextLength - metadata.maxOutputTokens),
         maxOutputTokens: metadata.maxOutputTokens,
         isUserSelectable: true,
         ...(credentialRef !== "legacy" ? { isBYOK: true } : {}),
         ...(credentialRef === "legacy" && !apiKey
           ? { requiresAuthorization: { label: "Configure CrofAI API key" } }
           : {}),
-        ...(metadata.reasoningEffort || contextSizeOptions(metadata.contextLength)
+        ...(metadata.reasoningEffort || contextSizeOptions(Math.max(1, metadata.contextLength - metadata.maxOutputTokens))
           ? {
               configurationSchema: buildModelConfigurationSchema(
                 metadata.reasoningEffort ? defaultEffort : undefined,
-                contextSizeOptions(metadata.contextLength),
+                contextSizeOptions(Math.max(1, metadata.contextLength - metadata.maxOutputTokens)),
               ),
             }
           : {}),
