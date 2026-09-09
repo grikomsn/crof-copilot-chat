@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://marketplace.visualstudio.com/items?itemName=grikomsn.crof-copilot-chat"><img src="https://img.shields.io/visual-studio-marketplace/v/grikomsn.crof-copilot-chat?style=flat-square&logo=visualstudiocode&label=Marketplace" alt="Visual Studio Marketplace version"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=grikomsn.crof-copilot-chat"><img src="https://img.shields.io/visual-studio-marketplace/i/grikomsn.crof-copilot-chat?style=flat-square&label=Installs" alt="Visual Studio Marketplace installs"></a>
   <a href="https://github.com/grikomsn/crof-copilot-chat/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/grikomsn/crof-copilot-chat/ci.yml?branch=main&style=flat-square&label=CI" alt="CI status"></a>
   <a href="https://github.com/grikomsn/crof-copilot-chat/blob/main/LICENSE"><img src="https://img.shields.io/github/license/grikomsn/crof-copilot-chat?style=flat-square" alt="MIT license"></a>
 </p>
@@ -40,10 +41,10 @@ For models that support configurable reasoning, choose **None**, **Low**, **Medi
 
 ## Documentation
 
-- [Setup, settings, and troubleshooting](docs/setup.md)
-- [Models and pricing](docs/models.md)
-- [API key and security model](docs/security.md)
-- [Development and releases](docs/development.md)
+- [Setup, settings, and troubleshooting](https://github.com/grikomsn/crof-copilot-chat/blob/main/docs/setup.md)
+- [Models and pricing](https://github.com/grikomsn/crof-copilot-chat/blob/main/docs/models.md)
+- [API key and security model](https://github.com/grikomsn/crof-copilot-chat/blob/main/docs/security.md)
+- [Development and releases](https://github.com/grikomsn/crof-copilot-chat/blob/main/docs/development.md)
 
 ## Related projects
 
