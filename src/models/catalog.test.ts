@@ -24,7 +24,7 @@ test("accepts CrofAI chat model IDs and excludes non-chat families", () => {
 test("orders documented fallback models before other discovered models", () => {
   assert.deepEqual(orderModels(["future-chat", "glm-5.2", "DEEPSEEK-V4-PRO-0813", "deepseek-v4-pro-0813"]), [
     FALLBACK_MODELS[0],
-    FALLBACK_MODELS[9],
+    FALLBACK_MODELS[10],
     "future-chat",
   ]);
 });
