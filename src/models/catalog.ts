@@ -4,6 +4,7 @@ import type { ModelsDevModelMetadata } from "./metadata";
 export const FALLBACK_MODELS = [
   "deepseek-v4-pro-0813",
   "deepseek-v4-flash-0731",
+  "deepseek-v4.1-flash",
   "deepseek-v4-flash-vision-exp",
   "kimi-k3",
   "kimi-k3-eco",
@@ -26,6 +27,7 @@ export const DEFAULT_MAX_OUTPUT_TOKENS = 131_072;
 const OFFICIAL_REASONING_EFFORT_MODELS = new Set([
   "deepseek-v4-pro-0813",
   "deepseek-v4-flash-0731",
+  "deepseek-v4.1-flash",
   "deepseek-v4-flash-vision-exp",
   "kimi-k3",
   "kimi-k3-eco",
@@ -91,6 +93,7 @@ const VENDOR_LABELS: Readonly<Record<string, string>> = {
 export const FALLBACK_MODEL_METADATA: readonly CrofAIModelMetadata[] = [
   model("deepseek-v4-pro-0813", 1_000_000, 131_072),
   model("deepseek-v4-flash-0731", 1_000_000, 131_072),
+  model("deepseek-v4.1-flash", 1_000_000, 131_072),
   model("deepseek-v4-flash-vision-exp", 1_000_000, 131_072, true),
   model("kimi-k3", 1_000_000, 262_144),
   model("kimi-k3-eco", 1_000_000, 131_072),

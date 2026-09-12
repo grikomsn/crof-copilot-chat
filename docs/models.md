@@ -19,6 +19,7 @@ The fallback snapshot was last updated on 2026-09-05:
 | --- | ---: | ---: | :---: | :---: | :---: |
 | DeepSeek V4 Pro 0813 | 1M | 128K | No | Yes | Yes |
 | DeepSeek V4 Flash 0731 | 1M | 128K | No | Yes | Yes |
+| DeepSeek V4.1 Flash | 1M | 128K | No | Yes | Yes |
 | DeepSeek V4 Flash Vision (Experimental) | 1M | 128K | Yes | Yes | Yes |
 | Kimi K3 | 1M | 256K | No | Yes | Yes |
 | Kimi K3 Eco | 1M | 128K | No | Yes | Yes |
