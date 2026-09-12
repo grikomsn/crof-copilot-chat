@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+### Patch Changes
+
+- 44361c8: Add DeepSeek V4.1 Flash to the model catalog snapshot and documentation.
+
 ## 0.4.0
 
 ### Minor Changes
